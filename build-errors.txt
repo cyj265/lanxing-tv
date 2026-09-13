@@ -32,8 +32,8 @@ to this project's gradle.properties.
 > Task :app:parseReleaseLocalResources FROM-CACHE
 > Task :app:dataBindingGenBaseClassesRelease FROM-CACHE
 > Task :app:generateReleaseBuildConfig
-> Task :app:mapReleaseSourceSetPaths
 > Task :app:checkReleaseAarMetadata
+> Task :app:mapReleaseSourceSetPaths
 > Task :app:createReleaseCompatibleScreenManifests
 > Task :app:extractDeepLinksRelease FROM-CACHE
 > Task :app:processReleaseMainManifest
@@ -45,34 +45,30 @@ to this project's gradle.properties.
 > Task :app:stripReleaseDebugSymbols NO-SOURCE
 > Task :app:extractReleaseNativeSymbolTables NO-SOURCE
 > Task :app:mergeReleaseNativeDebugMetadata NO-SOURCE
-> Task :app:processReleaseManifestForPackage
 > Task :app:checkReleaseDuplicateClasses
 > Task :app:desugarReleaseFileDependencies FROM-CACHE
 > Task :app:mergeReleaseStartupProfile
-> Task :app:processReleaseResources
 > Task :app:mergeExtDexRelease FROM-CACHE
 > Task :app:mergeReleaseArtProfile
 > Task :app:mergeReleaseShaders
 > Task :app:compileReleaseShaders NO-SOURCE
 > Task :app:generateReleaseAssets UP-TO-DATE
 > Task :app:mergeReleaseAssets
+> Task :app:processReleaseManifestForPackage
 > Task :app:compressReleaseAssets FROM-CACHE
 > Task :app:extractReleaseVersionControlInfo
 > Task :app:collectReleaseDependencies
 > Task :app:sdkReleaseDependencyData
-> Task :app:optimizeReleaseResources
 > Task :app:validateSigningRelease
 > Task :app:writeReleaseAppMetadata
 > Task :app:writeReleaseSigningConfigVersions
+> Task :app:processReleaseResources
+> Task :app:optimizeReleaseResources
 
 > Task :app:compileReleaseKotlin FAILED
-e: file:///home/runner/work/lanxing-tv/lanxing-tv/app/src/main/java/com/cyj265/iptvplayer/MainActivity.kt:2140:27 Argument type mismatch: actual type is 'Char', but 'String' was expected.
-e: file:///home/runner/work/lanxing-tv/lanxing-tv/app/src/main/java/com/cyj265/iptvplayer/MainActivity.kt:2140:27 No value passed for parameter 'index'.
-e: file:///home/runner/work/lanxing-tv/lanxing-tv/app/src/main/java/com/cyj265/iptvplayer/MainActivity.kt:2140:37 Syntax error: Expecting '"'.
-e: file:///home/runner/work/lanxing-tv/lanxing-tv/app/src/main/java/com/cyj265/iptvplayer/MainActivity.kt:2141:1 Syntax error: Expecting an expression.
-e: file:///home/runner/work/lanxing-tv/lanxing-tv/app/src/main/java/com/cyj265/iptvplayer/MainActivity.kt:2141:1 Syntax error: Expecting ')'.
-e: file:///home/runner/work/lanxing-tv/lanxing-tv/app/src/main/java/com/cyj265/iptvplayer/MainActivity.kt:2141:11 Syntax error: Unexpected tokens (use ';' to separate expressions on the same line).
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_3-1789217599031.json
+e: file:///home/runner/work/lanxing-tv/lanxing-tv/app/src/main/java/com/cyj265/iptvplayer/MainActivity.kt:1625:29 Unsupported escape sequence.
+e: file:///home/runner/work/lanxing-tv/lanxing-tv/app/src/main/java/com/cyj265/iptvplayer/MainActivity.kt:1625:33 Unsupported escape sequence.
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_3-1789273231001.json
 
 FAILURE: Build failed with an exception.
 
@@ -87,5 +83,5 @@ Execution failed for task ':app:compileReleaseKotlin'.
 > Run with --scan to get full insights.
 > Get more help at https://help.gradle.org.
 
-BUILD FAILED in 31s
+BUILD FAILED in 26s
 36 actionable tasks: 25 executed, 11 from cache
