@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
-  <rect width="1280" height="720" fill="#1a1a2e"/>
-  <rect x="40" y="40" width="1200" height="640" rx="12" fill="#16213e" stroke="#0f3460" stroke-width="2"/>
-  <text x="640" y="340" font-family="sans-serif" font-size="48" fill="#e94560" text-anchor="middle" font-weight="bold">真机截图待替换</text>
-  <text x="640" y="410" font-family="sans-serif" font-size="32" fill="#eaeaea" text-anchor="middle">设置面板</text>
-  <text x="640" y="470" font-family="sans-serif" font-size="20" fill="#888" text-anchor="middle">揽星 TV · LanXing TV</text>
-</svg>
