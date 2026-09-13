@@ -628,7 +628,7 @@ class PlaybackManager(
             error.printStackTrace(PrintWriter(sw))
             sb.append("[Stack]\n").append(sw.toString()).append("\n")
             sb.append("========== 结束 ==========\n")
-            java.io.File(context.filesDir, "crash.log").appendText(sb.toString())
+            java.io.File(context.filesDir, "app.log").appendText(sb.toString())
         } catch (ignored: Exception) {}
     }
 

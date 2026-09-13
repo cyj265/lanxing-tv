@@ -159,7 +159,6 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        showLastCrashIfAny()
 
         repository = PlaylistRepository(this)
         favorites = repository.getFavorites().toMutableSet()
@@ -312,9 +311,9 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         super.onPause()
     }
 
-    // ---------- 崩溃日志（真机定位用） ----------
+    // ---------- 运行日志（启动/播放/问题定位用） ----------
 
-    private fun crashFile(): File = File(filesDir, "crash.log")
+    private fun crashFile(): File = File(filesDir, "app.log")
 
     private fun installCrashHandler() {
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
@@ -368,7 +367,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         runOnUiThread {
             Toast.makeText(
                 applicationContext,
-                "上次运行崩溃（可在 设置-调试 中导出）：\n$brief",
+                "运行日志（可在 设置-调试 中导出）：\n$brief",
                 Toast.LENGTH_LONG
             ).show()
         }
@@ -1524,7 +1523,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             Toast.makeText(applicationContext, R.string.export_empty, Toast.LENGTH_SHORT).show()
             return
         }
-        val name = "crash-log-" +
+        val name = "app-log-" +
             SimpleDateFormat("yyyyMMdd-HHmmss", Locale.getDefault()).format(Date()) + ".txt"
         try {
             createLogDoc.launch(name)
@@ -2155,7 +2154,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         }
     }
 
-    /** 启动日志：写入 crash.log 便于定位启动黑屏/闪退问题 */
+    /** 启动日志：写入 app.log 便于定位启动/播放问题 */
     private fun logStartup(msg: String) {
         try {
             val file = crashFile()
