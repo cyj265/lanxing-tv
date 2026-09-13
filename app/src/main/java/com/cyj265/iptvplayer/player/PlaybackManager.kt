@@ -284,7 +284,7 @@ class PlaybackManager(
             .setBufferDurationsMs(
                 8_000,    // minBufferMs
                 15_000,   // maxBufferMs
-                1_500,    // bufferForPlaybackMs：起播所需缓冲（秒开）
+                800,      // bufferForPlaybackMs：起播所需缓冲（秒开，从1.5s降到0.8s加速换台）
                 3_000     // bufferForPlaybackAfterRebufferMs：卡顿后恢复所需缓冲
             )
             .build()
@@ -411,8 +411,7 @@ class PlaybackManager(
         hasStartedPlaying = false
         currentUrl = url
         currentChannelName = currentChannelName ?: url
-        p.stop()
-        p.clearMediaItems()
+        // 换台优化：setMediaSource 自动替换当前 source，无需手动 stop/clear，减少播放器重置开销
         p.setMediaSource(buildMediaSource(url, currentChannelName ?: url))
         p.prepare()
         p.playWhenReady = true
