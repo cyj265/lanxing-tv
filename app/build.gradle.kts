@@ -11,8 +11,8 @@ android {
         applicationId = "com.cyj265.iptvplayer"
         minSdk = 23
         targetSdk = 34
-        versionCode = 62
-        versionName = "1.14.7"
+        versionCode = 63
+        versionName = "1.14.8"
     }
 
     buildTypes {
@@ -50,6 +50,12 @@ android {
     buildFeatures {
         viewBinding = true
         buildConfig = true
+    }
+
+    // 构建号：GitHub Actions 传入 RUN_NUMBER，本地构建默认 0
+    // 用于更新检测：即使版本号相同，只要构建号增加就提示更新
+    defaultConfig {
+        buildConfigField("int", "BUILD_NUMBER", (System.getenv("RUN_NUMBER") ?: "0").toString())
     }
 }
 

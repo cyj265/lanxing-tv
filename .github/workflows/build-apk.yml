@@ -75,6 +75,8 @@ jobs:
           done
 
       - name: Build release APK
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           set +e
           gradle assembleRelease --no-daemon 2>&1 | tee build.log

@@ -103,50 +103,61 @@ object PlaylistParser {
     private fun parseRaw(content: String): List<Channel> {
         val channels = ArrayList<Channel>()
         val lines = content.split("\n", "\r\n")
-        var pending: Channel? = null
+        var pendingName = ""
+        var pendingGroup = ""
+        var pendingLogo = ""
+        var pendingTvgId = ""
+        var pendingUrls = ArrayList<String>()
         var index = 0
+
+        fun flushPending() {
+            if (pendingName.isNotEmpty() && pendingUrls.isNotEmpty()) {
+                val tvgId = if (pendingTvgId.isEmpty()) pendingName else pendingTvgId
+                channels.add(
+                    Channel(
+                        id = "ch-$index-${pendingUrls[0].hashCode()}",
+                        name = pendingName,
+                        url = pendingUrls[0],
+                        group = if (pendingGroup.isEmpty()) "未分组" else pendingGroup,
+                        logo = pendingLogo,
+                        tvgId = tvgId,
+                        sources = pendingUrls.toList()
+                    )
+                )
+                index++
+            }
+            pendingName = ""
+            pendingGroup = ""
+            pendingLogo = ""
+            pendingTvgId = ""
+            pendingUrls = ArrayList()
+        }
 
         for (rawLine in lines) {
             val line = rawLine.trim()
             if (line.isEmpty()) continue
 
             if (line.startsWith("#EXTINF")) {
+                // 新频道开始：先 flush 上一个频道的所有线路
+                flushPending()
                 val m = EXTINF_PATTERN.matcher(line)
                 if (m.matches()) {
                     val attrs = m.group(1) ?: ""
-                    val name = m.group(2) ?: ""
-                    val group = extractAttr(attrs, "group-title")
-                    val logo = extractAttr(attrs, "tvg-logo")
-                    val tvgId = extractAttr(attrs, "tvg-id")
-                    pending = Channel(
-                        id = "",
-                        name = name,
-                        url = "",
-                        group = group,
-                        logo = logo,
-                        tvgId = tvgId
-                    )
+                    pendingName = m.group(2) ?: ""
+                    pendingGroup = extractAttr(attrs, "group-title")
+                    pendingLogo = extractAttr(attrs, "tvg-logo")
+                    pendingTvgId = extractAttr(attrs, "tvg-id")
                 }
             } else if (!line.startsWith("#")) {
-                // 频道流地址
-                val info = pending
-                if (info != null && line.startsWith("http")) {
-                    val tvgId = if (info.tvgId.isEmpty()) info.name else info.tvgId
-                    channels.add(
-                        Channel.from(
-                            m3uIndex = index++,
-                            name = if (info.name.isEmpty()) line else info.name,
-                            url = line,
-                            group = if (info.group.isEmpty()) "未分组" else info.group,
-                            logo = info.logo,
-                            tvgId = tvgId
-                        )
-                    )
+                // 频道流地址：收集到当前频道的线路列表（支持连续多个URL）
+                if (pendingName.isNotEmpty() && line.startsWith("http")) {
+                    if (!pendingUrls.contains(line)) pendingUrls.add(line)
                 }
-                pending = null
             }
             // 其他 # 开头的行（#EXTM3U / #EXTVLCOPT 等）直接忽略
         }
+        // flush 最后一个频道
+        flushPending()
         return channels
     }
 

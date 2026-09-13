@@ -1619,6 +1619,16 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     // ---------- 检查更新（自动下载安装） ----------
 
     /** 启动时静默检查更新：有更新弹窗确认，没更新不打扰，失败也不打扰 */
+    /** 从 APK 文件名提取构建号，如 iptv-player-v244.apk -> 244 */
+    private fun extractBuildNumber(apkFileName: String): Int {
+        return try {
+            val m = Regex("v(\d+)\.apk$").find(apkFileName)
+            m?.groupValues?.get(1)?.toInt() ?: 0
+        } catch (e: Exception) {
+            0
+        }
+    }
+
     private fun checkUpdateSilent() {
         Thread {
             try {
@@ -1632,21 +1642,25 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 val tag = json.getString("tag_name").removePrefix("v")
                 val assets = json.getJSONArray("assets")
                 var apkUrl: String? = null
+                var apkName: String? = null
                 for (i in 0 until assets.length()) {
                     val a = assets.getJSONObject(i)
                     if (a.getString("name").endsWith(".apk")) {
                         apkUrl = a.getString("browser_download_url")
+                        apkName = a.getString("name")
                         break
                     }
                 }
-                val current = BuildConfig.VERSION_NAME
-                val newer = compareVersions(tag, current) > 0
+                // 用构建号检测更新：即使版本号相同，构建号增加也提示
+                val latestBuild = if (apkName != null) extractBuildNumber(apkName) else 0
+                val currentBuild = BuildConfig.BUILD_NUMBER
+                val newer = latestBuild > currentBuild
                 if (newer && !apkUrl.isNullOrEmpty()) {
                     runOnUiThread {
                         try {
                             AlertDialog.Builder(this)
                                 .setTitle("发现新版本")
-                                .setMessage("揽星TV v$tag 已发布\n当前版本：v$current\n\n是否立即更新？")
+                                .setMessage("揽星TV v$tag (构建 #$latestBuild) 已发布\n当前版本：v${BuildConfig.VERSION_NAME} (构建 #$currentBuild)\n\n是否立即更新？")
                                 .setPositiveButton("立即更新") { _, _ ->
                                     downloadAndInstall(apkUrl)
                                 }
@@ -1677,23 +1691,27 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 val tag = json.getString("tag_name").removePrefix("v")
                 val assets = json.getJSONArray("assets")
                 var apkUrl: String? = null
+                var apkName: String? = null
                 for (i in 0 until assets.length()) {
                     val a = assets.getJSONObject(i)
                     if (a.getString("name").endsWith(".apk")) {
                         apkUrl = a.getString("browser_download_url")
+                        apkName = a.getString("name")
                         break
                     }
                 }
-                val current = BuildConfig.VERSION_NAME
-                val newer = compareVersions(tag, current) > 0
+                // 用构建号检测更新
+                val latestBuild = if (apkName != null) extractBuildNumber(apkName) else 0
+                val currentBuild = BuildConfig.BUILD_NUMBER
+                val newer = latestBuild > currentBuild
                 runOnUiThread {
                     try {
                         if (!newer || apkUrl.isNullOrEmpty()) {
                             binding.tvUpdateStatus.text =
-                                getString(R.string.update_latest) + "（v" + current + "）"
+                                getString(R.string.update_latest) + "（v" + BuildConfig.VERSION_NAME + " #$currentBuild）"
                         } else {
                             binding.tvUpdateStatus.text =
-                                getString(R.string.update_found) + " v" + tag
+                                getString(R.string.update_found) + " v" + tag + " #$latestBuild"
                             downloadAndInstall(apkUrl)
                         }
                     } catch (ignored: Throwable) {
