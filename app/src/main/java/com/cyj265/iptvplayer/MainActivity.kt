@@ -1224,6 +1224,18 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 ).show()
             }
         }
+        binding.btnRefreshSource.setOnClickListener {
+            val url = repository.getActiveSource()
+            if (url.isNullOrEmpty()) {
+                Toast.makeText(applicationContext, "未配置直播源", Toast.LENGTH_SHORT).show()
+            } else {
+                currentChannel = null
+                adapter.setSelected(null)
+                reloadPlaylist(true)
+                Toast.makeText(applicationContext, "正在刷新当前源...", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         binding.btnAddSource.setOnClickListener { showAddSourceDialog() }
 
         // 一键测速
