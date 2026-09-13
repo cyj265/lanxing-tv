@@ -300,6 +300,11 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     override fun onResume() {
         super.onResume()
         clockHandler.post(clockRunnable)
+        // 切后台再回来时，如果播放器已就绪但被暂停，恢复播放（避免重新初始化）
+        try {
+            playback.resumeIfPaused()
+        } catch (ignored: Throwable) {
+        }
     }
 
     override fun onPause() {

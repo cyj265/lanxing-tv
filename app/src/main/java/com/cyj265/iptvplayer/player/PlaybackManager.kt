@@ -473,6 +473,27 @@ class PlaybackManager(
     /** 当前线路地址 */
     fun currentSourceUrl(): String? = currentUrl
 
+    /** 播放器是否正在播放（用于 onResume 时判断状态） */
+    fun isPlaying(): Boolean {
+        val p = player ?: return false
+        return try {
+            p.isPlaying
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /** onResume 时恢复播放：如果播放器已就绪但被暂停，就恢复播放 */
+    fun resumeIfPaused() {
+        val p = player ?: return
+        try {
+            if (!p.isPlaying && p.playbackState == androidx.media3.common.Player.STATE_READY) {
+                p.play()
+            }
+        } catch (e: Exception) {
+        }
+    }
+
     /** 当前估计带宽（kbps），用于顶部"显示网速" */
     @OptIn(UnstableApi::class)
     fun bandwidthKbps(): Long {
