@@ -1622,7 +1622,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     /** 从 APK 文件名提取构建号，如 iptv-player-v244.apk -> 244 */
     private fun extractBuildNumber(apkFileName: String): Int {
         return try {
-            val m = Regex("v(\d+)\.apk$").find(apkFileName)
+            val m = Regex("v(\\d+)\\.apk$").find(apkFileName)
             m?.groupValues?.get(1)?.toInt() ?: 0
         } catch (e: Exception) {
             0
