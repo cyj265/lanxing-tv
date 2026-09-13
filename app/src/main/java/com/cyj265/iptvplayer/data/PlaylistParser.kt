@@ -173,7 +173,11 @@ object PlaylistParser {
         for (c in raw) {
             val key = c.group to c.name
             val urls = urlsByKey.getOrPut(key) { ArrayList() }
-            if (!urls.contains(c.url)) urls.add(c.url)
+            // 关键修复：合并时要把 c.sources（多线路）全部收集，不能只取 c.url
+            val srcList = if (c.sources.isEmpty()) listOf(c.url) else c.sources
+            for (s in srcList) {
+                if (!urls.contains(s)) urls.add(s)
+            }
             if (!metaByKey.containsKey(key)) metaByKey[key] = c
         }
 
