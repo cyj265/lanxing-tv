@@ -17,8 +17,7 @@ import com.tencent.bugly.crashreport.CrashReport
 class App : Application() {
 
     companion object {
-        // TODO: 替换为你的 Bugly AppID（在 https://bugly.qq.com 创建产品后获取）
-        private const val BUGLY_APP_ID = ""
+        private const val BUGLY_APP_ID = "9f5599ea70"
     }
 
     override fun onCreate() {
