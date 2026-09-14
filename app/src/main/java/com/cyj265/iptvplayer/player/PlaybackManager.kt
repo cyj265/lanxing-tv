@@ -665,7 +665,12 @@ class PlaybackManager(
             error.printStackTrace(PrintWriter(sw))
             sb.append("[Stack]\n").append(sw.toString()).append("\n")
             sb.append("========== 结束 ==========\n")
-            java.io.File(context.filesDir, "app.log").appendText(sb.toString())
+            // 日志大小限制：超过 500KB 自动清空，避免长期使用占用过多存储空间
+            val logFile = java.io.File(context.filesDir, "app.log")
+            if (logFile.exists() && logFile.length() > 500 * 1024) {
+                logFile.delete()
+            }
+            logFile.appendText(sb.toString())
         } catch (ignored: Exception) {}
     }
 

@@ -2178,6 +2178,10 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     private fun logStartup(msg: String) {
         try {
             val file = crashFile()
+            // 日志大小限制：超过 500KB 自动清空，避免长期使用占用过多存储空间
+            if (file.exists() && file.length() > 500 * 1024) {
+                file.delete()
+            }
             val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.getDefault()).format(java.util.Date())
             val existing = if (file.exists()) file.readText(Charsets.UTF_8) else ""
             file.writeText("$existing\n[$timestamp][Startup] $msg", Charsets.UTF_8)
