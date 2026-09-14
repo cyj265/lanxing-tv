@@ -263,7 +263,7 @@ class PlaylistRepository(private val context: Context) {
 
     /** 画面比例：fit / fill / zoom / 16:9 / 4:3 */
     var aspectRatio: String
-        get() = safeGetString("aspect_ratio", "fit") ?: "fit"
+        get() = safeGetString("aspect_ratio", "fill") ?: "fill"
         set(value) = safeApply { putString("aspect_ratio", value) }
 
     /** 打开应用时自动恢复上次频道 */
