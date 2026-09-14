@@ -82,4 +82,8 @@ dependencies {
     // 扫码局域网管理：轻量 HTTP 服务 + 二维码编码（体积小，无额外权限）
     implementation("org.nanohttpd:nanohttpd:2.3.1")
     implementation("com.google.zxing:core:3.5.3")
+
+    // Bugly 崩溃自动上报（崩溃自动上传到 bugly.qq.com，无需用户手动导出日志）
+    // AppID 在 App.kt 中配置，为空则不上报
+    implementation("com.tencent.bugly:crashreport:4.1.9.3")
 }

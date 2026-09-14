@@ -180,6 +180,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             onChannelFocused = { ch ->
                 lastFocusedChannel = ch
                 updateProgramInfo(ch)
+                // 换台预加载：焦点频道预热 DNS+TCP，OK 键播放时省握手时间
+                playback.preloadChannel(ch.sources.ifEmpty { listOf(ch.url) })
                 // 焦点移动只更新节目信息，不自动换台（OK 键才播放）
             }
         )

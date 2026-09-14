@@ -23,6 +23,11 @@
 -keep class com.google.zxing.** { *; }
 -dontwarn com.google.zxing.**
 
+# ===== Bugly 崩溃上报 =====
+-keep class com.tencent.bugly.** { *; }
+-dontwarn com.tencent.bugly.**
+-keep public class com.tencent.bugly.crashreport.CrashReport { *; }
+
 # ===== Kotlin 协程 =====
 -keepnames class kotlinx.coroutines.internal.MainDispatcherFactory {}
 -keepnames class kotlinx.coroutines.CoroutineExceptionHandler {}
