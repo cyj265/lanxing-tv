@@ -1372,6 +1372,10 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
 
         refreshCrashLog()
         binding.btnExportCrashLog.setOnClickListener { launchCrashExport() }
+        binding.btnTestCrash.setOnClickListener {
+            // 测试 Bugly 崩溃上报：故意抛出异常，验证崩溃能否自动上报到 Bugly 后台
+            throw RuntimeException("Bugly测试崩溃 - 验证崩溃自动上报功能")
+        }
         binding.btnExportAboutCrash.setOnClickListener { launchCrashExport() }
         binding.btnClearCrashLog.setOnClickListener {
             crashFile().delete()
