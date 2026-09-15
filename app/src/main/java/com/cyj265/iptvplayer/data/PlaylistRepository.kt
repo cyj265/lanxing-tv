@@ -58,6 +58,15 @@ class PlaylistRepository(private val context: Context) {
         }
     }
 
+    private fun safeGetInt(key: String, def: Int): Int {
+        return try {
+            prefs.getInt(key, def)
+        } catch (e: Throwable) {
+            resetPrefs()
+            def
+        }
+    }
+
     private fun safeGetStringSet(key: String): MutableSet<String> {
         return try {
             prefs.getStringSet(key, HashSet())!!.toMutableSet()
