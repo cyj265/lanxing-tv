@@ -276,6 +276,16 @@ class PlaylistRepository(private val context: Context) {
         get() = safeGetBoolean("auto_hide_overlay", true)
         set(value) = safeApply { putBoolean("auto_hide_overlay", value) }
 
+    /** 定时关机：0=关闭，30/60/90=分钟数 */
+    var sleepTimerMinutes: Int
+        get() = safeGetInt("sleep_timer_minutes", 0)
+        set(value) = safeApply { putInt("sleep_timer_minutes", value) }
+
+    /** 开机自启动 */
+    var autoBoot: Boolean
+        get() = safeGetBoolean("auto_boot", false)
+        set(value) = safeApply { putBoolean("auto_boot", value) }
+
     /** 上次播放的频道 id */
     var lastChannelId: String?
         get() = safeGetString("last_channel_id", null)

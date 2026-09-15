@@ -108,6 +108,14 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
 
     // 右上角时钟 + 每秒刷新网速显示，并每分钟刷新一次列表 EPG 节目文本
     private val clockHandler = Handler(Looper.getMainLooper())
+    // ---------- 定时关机 ----------
+    private val sleepTimerHandler = Handler(Looper.getMainLooper())
+    private val sleepTimerRunnable = Runnable {
+        // 定时关机时间到：退出 App
+        Toast.makeText(applicationContext, "定时关机时间到，即将退出", Toast.LENGTH_SHORT).show()
+        sleepTimerHandler.postDelayed({ finishAndRemoveTask() }, 1500)
+    }
+    private var sleepTimerEndTime: Long = 0
     private var clockTick = 0
     private val clockRunnable = object : Runnable {
         override fun run() {
@@ -226,6 +234,10 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         setupSearch()
         setupButtons()
         setupSettingsPanel()
+        // 恢复定时关机（如果之前设置了且 App 被重启）
+        if (repository.sleepTimerMinutes > 0) {
+            startSleepTimer(repository.sleepTimerMinutes)
+        }
         setupSourceBar()
         startRemoteServer()
 
@@ -1346,6 +1358,34 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             if (checked) showOverlay()
         }
 
+        // 定时关机：点击切换 关闭→30分钟→60分钟→90分钟→关闭
+        updateSleepTimerUI()
+        binding.tvSleepTimer.setOnClickListener {
+            val current = repository.sleepTimerMinutes
+            val next = when (current) {
+                0 -> 30
+                30 -> 60
+                60 -> 90
+                else -> 0
+            }
+            repository.sleepTimerMinutes = next
+            updateSleepTimerUI()
+            if (next > 0) {
+                startSleepTimer(next)
+                Toast.makeText(applicationContext, "${next}分钟后自动关机", Toast.LENGTH_SHORT).show()
+            } else {
+                cancelSleepTimer()
+                Toast.makeText(applicationContext, "定时关机已取消", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        // 开机自启动
+        binding.chkAutoBoot.isChecked = repository.autoBoot
+        binding.chkAutoBoot.setOnCheckedChangeListener { _, checked ->
+            repository.autoBoot = checked
+            Toast.makeText(applicationContext, if (checked) "开机自启动已开启" else "开机自启动已关闭", Toast.LENGTH_SHORT).show()
+        }
+
         setupAspectRatioOptions()
         updateAspectRatioSelection()
 
@@ -2174,6 +2214,24 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         }
     }
 
+    // ---------- 定时关机 ----------
+    private fun updateSleepTimerUI() {
+        val minutes = repository.sleepTimerMinutes
+        val text = if (minutes == 0) "定时关机：关闭" else "定时关机：${minutes}分钟"
+        binding.tvSleepTimer.text = text
+    }
+
+    private fun startSleepTimer(minutes: Int) {
+        cancelSleepTimer()
+        sleepTimerEndTime = System.currentTimeMillis() + minutes * 60 * 1000L
+        sleepTimerHandler.postDelayed(sleepTimerRunnable, minutes * 60 * 1000L)
+    }
+
+    private fun cancelSleepTimer() {
+        sleepTimerHandler.removeCallbacks(sleepTimerRunnable)
+        sleepTimerEndTime = 0
+    }
+
     /** 启动日志：写入 app.log 便于定位启动/播放问题 */
     private fun logStartup(msg: String) {
         try {
@@ -2828,6 +2886,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         clockHandler.removeCallbacksAndMessages(null)
         previewHandler.removeCallbacksAndMessages(null)
         surfaceResumeHandler.removeCallbacksAndMessages(null)
+        sleepTimerHandler.removeCallbacksAndMessages(null)
         try {
             remoteServer?.stop()
         } catch (ignored: Exception) {

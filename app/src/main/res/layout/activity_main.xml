@@ -1406,6 +1406,52 @@
                             android:padding="6dp" />
 
                         <TextView
+                            android:id="@+id/tvSleepTimer"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="定时关机：关闭"
+                            android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:shadowColor="#99000000"
+                android:shadowRadius="3"
+                            android:textSize="15sp"
+                            android:focusable="true"
+                            android:clickable="true"
+                            android:background="?attr/selectableItemBackground"
+                            android:padding="6dp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="点击切换：关闭 → 30分钟 → 60分钟 → 90分钟"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+
+                        <CheckBox
+                            android:id="@+id/chkAutoBoot"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="开机自启动"
+                            android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:shadowColor="#99000000"
+                android:shadowRadius="3"
+                            android:textSize="15sp"
+                            android:focusable="true"
+                            android:clickable="true"
+                            android:background="?attr/selectableItemBackground"
+                            android:padding="6dp" />
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="盒子开机后自动启动揽星TV"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+
+                        <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:text="@string/ui_hint"
