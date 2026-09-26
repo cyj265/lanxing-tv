@@ -441,6 +441,10 @@ class PlaybackManager(
         decoderInitRetryCount = 0
         renderRetryCount = 0
         degradedToSoftware = false
+        // 修复：换台时必须更新 currentChannelName，
+        // 否则 playCurrentSource() 里 `?: url` 只在首次生效且赋的是 URL，
+        // 导致崩溃日志 [Playback] channel= 永远是首个频道的地址，无法定位问题。
+        currentChannelName = channelName
         playCurrentSource()
     }
     private fun playCurrentSource() {

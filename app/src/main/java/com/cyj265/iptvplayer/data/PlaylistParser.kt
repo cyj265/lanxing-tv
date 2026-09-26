@@ -63,21 +63,15 @@ object PlaylistParser {
                 name = "频道 ${index + 1}"
             } else {
                 // 尝试空格/Tab 分隔：name url
-                val spaceIdx = line.indexOf(' ')
-                val tabIdx = line.indexOf('\t')
-                val sIdx = when {
-                    spaceIdx < 0 -> tabIdx
-                    tabIdx < 0 -> spaceIdx
-                    else -> minOf(spaceIdx, tabIdx)
-                }
-                if (sIdx > 0) {
-                    val u = line.substring(sIdx + 1).trim()
-                    if (u.startsWith("http")) {
-                        name = line.substring(0, sIdx).trim()
-                        url = u
-                    } else {
-                        continue
-                    }
+                // 【修复】不能用第一个空格/制表符切分：频道名本身常含空格
+                // （如 "CCTV5+ 体育"、"凤凰卫视 中文台"），会被误当成分隔符，
+                // 导致整行被丢弃。改为定位行内第一个 http(s):// 的位置：
+                // 其前为频道名，其后为 URL（从 http 起点取，保留完整协议头）。
+                var httpIdx = line.indexOf("http://")
+                if (httpIdx < 0) httpIdx = line.indexOf("https://")
+                if (httpIdx > 0) {
+                    name = line.substring(0, httpIdx).trim()
+                    url = line.substring(httpIdx).trim()
                 } else {
                     continue
                 }
