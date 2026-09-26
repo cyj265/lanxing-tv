@@ -2894,6 +2894,12 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         // 修复：必须在 super.onDestroy() 之前释放播放器，
         // 否则 Activity 已销毁后再 release() 可能异常或资源泄漏。
         try {
+            // 修复：正常销毁（覆盖安装/系统回收）时关闭测速线程池，
+            // 避免 3 个测速线程常驻泄漏（此前只在 exitApp 退出时 shutdown）。
+            sourceHealthChecker.shutdown()
+        } catch (ignored: Exception) {
+        }
+        try {
             playback.release()
         } catch (ignored: Exception) {
         }
