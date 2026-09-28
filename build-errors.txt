@@ -2,26 +2,16 @@ To honour the JVM settings for this build a single-use Daemon process will be fo
 Daemon will be stopped at the end of the build 
 
 > Configure project :app
-e: file:///home/runner/work/lanxing-tv/lanxing-tv/app/build.gradle.kts:42:52: Unresolved reference: io
-e: file:///home/runner/work/lanxing-tv/lanxing-tv/app/build.gradle.kts:43:34: Unresolved reference: io
 w: file:///home/runner/work/lanxing-tv/lanxing-tv/app/build.gradle.kts:64:9: 'jvmTarget: String' is deprecated. Please migrate to the compilerOptions DSL. More details are here: https://kotl.in/u1r8ln
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_3-1790576305310.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_3-1790576802221.json
 
 FAILURE: Build failed with an exception.
 
 * Where:
-Build file '/home/runner/work/lanxing-tv/lanxing-tv/app/build.gradle.kts' line: 42
+Build file '/home/runner/work/lanxing-tv/lanxing-tv/app/build.gradle.kts' line: 28
 
 * What went wrong:
-Script compilation errors:
-
-  Line 42:             if (storeFileProp.isNotEmpty() && java.io.File(storeFileProp).exists()) {
-                                                              ^ Unresolved reference: io
-
-  Line 43:                 storeFile = java.io.File(storeFileProp)
-                                            ^ Unresolved reference: io
-
-2 errors
+SigningConfig with name 'release' not found.
 
 * Try:
 > Run with --stacktrace option to get the stack trace.
@@ -29,4 +19,4 @@ Script compilation errors:
 > Run with --scan to get full insights.
 > Get more help at https://help.gradle.org.
 
-BUILD FAILED in 13s
+BUILD FAILED in 10s
