@@ -1,5 +1,7 @@
 # 揽星 TV（LanXing TV · Android TV IPTV 播放器）
 
+> ⚠️ **本应用专为 Android TV / 电视盒子设计，使用遥控器操作。不支持手机触屏操作，请勿安装到手机。**
+
 一个专为 **Android TV / 电视盒子** 设计的开源 IPTV 播放器，支持 **Android 6.0+（minSdk 23）**。
 
 播放内核使用 **Media3 ExoPlayer 1.11.0**（Google 官方播放器内核），对 HLS 直播流兼容性最好，H.265/HEVC 高清源硬解。
@@ -76,7 +78,12 @@
 1. 在 **Releases** 页面下载最新 `iptv-player-vN.apk`（或从 **Actions** 页面最新一次构建下载）
 2. 将 APK 复制到电视（U 盘 / Send files to TV / adb install 均可）
 3. 电视上开启"允许安装未知来源应用"，安装即可
-4. 以后新版本**直接覆盖安装**，播放列表、收藏、配置全部保留
+4. 如遇 Google Play Protect 提示"未知开发者"，选择"仍要安装"（本应用为开源项目，代码公开可审计）
+5. 以后新版本**直接覆盖安装**，播放列表、收藏、配置全部保留
+
+### 首次使用
+
+打开应用后，按遥控器**菜单键**进入设置 → 直播源，添加播放列表地址（M3U/M3U8/TXT），或用手机扫码快速添加。未添加播放源时界面会显示引导提示。
 
 > 推送到 `main` 分支会自动触发 GitHub Actions 构建并发布 Release（Release 列表只保留最近 3 个）。
 >

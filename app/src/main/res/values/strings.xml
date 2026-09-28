@@ -12,6 +12,7 @@
     <string name="loading_playlist">正在加载播放列表…</string>
     <string name="load_failed">加载失败，请检查地址</string>
     <string name="no_channels">未找到频道</string>
+    <string name="no_channels_guide">未添加播放源\n按遥控器「菜单」键进入设置 → 直播源\n或手机扫码快速添加</string>
     <string name="saved">已保存</string>
     <string name="save_sources_hint">保存后自动刷新当前源</string>
     <string name="current_source">当前直播源</string>

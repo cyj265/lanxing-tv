@@ -11,8 +11,8 @@ android {
         applicationId = "com.cyj265.iptvplayer"
         minSdk = 23
         targetSdk = 34
-        versionCode = 65
-        versionName = "1.15.1"
+        versionCode = 66
+        versionName = "1.15.2"
     }
 
     buildTypes {
@@ -23,14 +23,30 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // 自用侧载：用 debug 密钥签名，保证 CI 产出的 APK 可直接安装。
-            // 显式指定 keystore 路径与口令：避免 Gradle 打不开时静默自动生成新 keystore
-            // 导致每次构建签名都变、无法覆盖安装。
-            signingConfig = signingConfigs.getByName("debug")
+            // 优先使用 release 自签证书（CI 从 Secrets 注入），避免 debug 证书被 Google Play Protect 拦截；
+            // 本地构建无 release 证书时回退 debug 证书，保证可覆盖安装。
+            signingConfig = signingConfigs.getByName("release")
+                .takeIf { it.storeFile?.exists() == true }
+                ?: signingConfigs.getByName("debug")
         }
     }
 
     signingConfigs {
+        create("release") {
+            // CI 构建时通过环境变量注入：SIGNING_STORE_FILE / SIGNING_STORE_PASSWORD /
+            // SIGNING_KEY_ALIAS / SIGNING_KEY_PASSWORD。PKCS#12 格式（.p12）。
+            val storeFileProp = System.getenv("SIGNING_STORE_FILE") ?: ""
+            val storePasswordProp = System.getenv("SIGNING_STORE_PASSWORD") ?: ""
+            val keyAliasProp = System.getenv("SIGNING_KEY_ALIAS") ?: ""
+            val keyPasswordProp = System.getenv("SIGNING_KEY_PASSWORD") ?: ""
+            if (storeFileProp.isNotEmpty() && java.io.File(storeFileProp).exists()) {
+                storeFile = java.io.File(storeFileProp)
+                storePassword = storePasswordProp
+                keyAlias = keyAliasProp
+                keyPassword = keyPasswordProp
+                storeType = "PKCS12"
+            }
+        }
         getByName("debug") {
             storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
             storePassword = "android"

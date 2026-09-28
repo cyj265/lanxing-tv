@@ -2061,7 +2061,10 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         groupAdapter.setSelected(currentGroup)
         applyFilter()
         if (channels.isEmpty()) {
-            binding.tvChannelName.text = getString(R.string.no_channels)
+            binding.tvChannelName.text = getString(R.string.no_channels_guide)
+            binding.tvChannelName.maxLines = 3
+        } else {
+            binding.tvChannelName.maxLines = 1
         }
         updateSourceBar()
         updateSourceStatus()
@@ -2579,6 +2582,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 binding.tvChannelMeta.text = ""
                 return
             }
+            binding.tvChannelName.maxLines = 1
             binding.tvChannelName.text = ch.name
 
             // 序号 / 总数 + 分辨率 + 线路（多线路频道）
