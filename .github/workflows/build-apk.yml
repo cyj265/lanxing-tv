@@ -75,13 +75,15 @@ jobs:
           done
 
       # release 自签证书：从 Secrets 解码为 PKCS#12 文件，避免 debug 证书被 Google Play Protect 拦截。
-      # 未配置 Secrets 时自动跳过，build.gradle.kts 会回退到 debug 签名。
       - name: Setup release keystore
         id: release-keystore
         run: |
           if [ -n "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" ]; then
             echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > $HOME/release.keystore
             echo "status=ready"
+            echo "KEYSTORE_PATH=$HOME/release.keystore" >> $GITHUB_ENV
+            ls -la $HOME/release.keystore
+            keytool -list -keystore $HOME/release.keystore -storepass "${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" -storetype PKCS12 2>&1 | head -5
           else
             echo "status=skipped (RELEASE_KEYSTORE_BASE64 not set)"
           fi
@@ -89,11 +91,13 @@ jobs:
       - name: Build release APK
         env:
           RUN_NUMBER: ${{ github.run_number }}
-          SIGNING_STORE_FILE: ${{ env.HOME }}/release.keystore
+          SIGNING_STORE_FILE: ${{ env.KEYSTORE_PATH }}
           SIGNING_STORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: |
+          echo "SIGNING_STORE_FILE=$SIGNING_STORE_FILE"
+          ls -la "$SIGNING_STORE_FILE" 2>&1 || echo "keystore file not found!"
           set +e
           gradle assembleRelease --no-daemon 2>&1 | tee build.log
           status=${PIPESTATUS[0]}

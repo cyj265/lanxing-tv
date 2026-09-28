@@ -20,12 +20,16 @@ android {
             // CI 构建时通过环境变量注入：SIGNING_STORE_FILE / SIGNING_STORE_PASSWORD /
             // SIGNING_KEY_ALIAS / SIGNING_KEY_PASSWORD。PKCS#12 格式（.p12）。
             val storeFileProp = System.getenv("SIGNING_STORE_FILE") ?: ""
+            println("[signing] SIGNING_STORE_FILE=$storeFileProp")
             if (storeFileProp.isNotEmpty() && file(storeFileProp).exists()) {
                 storeFile = file(storeFileProp)
                 storePassword = System.getenv("SIGNING_STORE_PASSWORD") ?: ""
                 keyAlias = System.getenv("SIGNING_KEY_ALIAS") ?: ""
                 keyPassword = System.getenv("SIGNING_KEY_PASSWORD") ?: ""
                 storeType = "PKCS12"
+                println("[signing] release keystore configured: ${file(storeFileProp).absolutePath}")
+            } else {
+                println("[signing] WARNING: release keystore not found, signing will fail")
             }
         }
     }
