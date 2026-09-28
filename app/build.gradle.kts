@@ -39,8 +39,8 @@ android {
             val storePasswordProp = System.getenv("SIGNING_STORE_PASSWORD") ?: ""
             val keyAliasProp = System.getenv("SIGNING_KEY_ALIAS") ?: ""
             val keyPasswordProp = System.getenv("SIGNING_KEY_PASSWORD") ?: ""
-            if (storeFileProp.isNotEmpty() && java.io.File(storeFileProp).exists()) {
-                storeFile = java.io.File(storeFileProp)
+            if (storeFileProp.isNotEmpty() && file(storeFileProp).exists()) {
+                storeFile = file(storeFileProp)
                 storePassword = storePasswordProp
                 keyAlias = keyAliasProp
                 keyPassword = keyPasswordProp
