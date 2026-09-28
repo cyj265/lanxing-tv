@@ -1702,7 +1702,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                         try {
                             AlertDialog.Builder(this)
                                 .setTitle("发现新版本")
-                                .setMessage("揽星TV v$tag (构建 #$latestBuild) 已发布\n当前版本：v${BuildConfig.VERSION_NAME} (构建 #$currentBuild)\n\n是否立即更新？")
+                                .setMessage("揽星TV v$tag (构建 #$latestBuild) 已发布\n当前版本：v${BuildConfig.VERSION_NAME} (构建 #$currentBuild)\n\n⚠️ 本次更新更换了签名证书，如安装失败请先卸载旧版后重新安装（播放列表和收藏需重新配置）。\n\n是否立即更新？")
                                 .setPositiveButton("立即更新") { _, _ ->
                                     downloadAndInstall(apkUrl)
                                 }
@@ -1754,7 +1754,14 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                         } else {
                             binding.tvUpdateStatus.text =
                                 getString(R.string.update_found) + " v" + tag + " #$latestBuild"
-                            downloadAndInstall(apkUrl)
+                            AlertDialog.Builder(this@MainActivity)
+                                .setTitle("发现新版本")
+                                .setMessage("揽星TV v$tag (构建 #$latestBuild) 已发布\n当前版本：v${BuildConfig.VERSION_NAME} (构建 #$currentBuild)\n\n⚠️ 本次更新更换了签名证书，如安装失败请先卸载旧版后重新安装（播放列表和收藏需重新配置）。\n\n是否立即更新？")
+                                .setPositiveButton("立即更新") { _, _ ->
+                                    downloadAndInstall(apkUrl)
+                                }
+                                .setNegativeButton("取消", null)
+                                .show()
                         }
                     } catch (ignored: Throwable) {
                     }

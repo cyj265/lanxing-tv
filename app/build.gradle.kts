@@ -11,8 +11,8 @@ android {
         applicationId = "com.cyj265.iptvplayer"
         minSdk = 23
         targetSdk = 34
-        versionCode = 66
-        versionName = "1.15.2"
+        versionCode = 67
+        versionName = "1.15.3"
     }
 
     signingConfigs {
