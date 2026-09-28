@@ -15,6 +15,21 @@ android {
         versionName = "1.15.2"
     }
 
+    signingConfigs {
+        create("release") {
+            // CI 构建时通过环境变量注入：SIGNING_STORE_FILE / SIGNING_STORE_PASSWORD /
+            // SIGNING_KEY_ALIAS / SIGNING_KEY_PASSWORD。PKCS#12 格式（.p12）。
+            val storeFileProp = System.getenv("SIGNING_STORE_FILE") ?: ""
+            if (storeFileProp.isNotEmpty() && file(storeFileProp).exists()) {
+                storeFile = file(storeFileProp)
+                storePassword = System.getenv("SIGNING_STORE_PASSWORD") ?: ""
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS") ?: ""
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD") ?: ""
+                storeType = "PKCS12"
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -23,35 +38,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // 优先使用 release 自签证书（CI 从 Secrets 注入），避免 debug 证书被 Google Play Protect 拦截；
-            // 本地构建无 release 证书时回退 debug 证书，保证可覆盖安装。
             signingConfig = signingConfigs.getByName("release")
-                .takeIf { it.storeFile?.exists() == true }
-                ?: signingConfigs.getByName("debug")
-        }
-    }
-
-    signingConfigs {
-        create("release") {
-            // CI 构建时通过环境变量注入：SIGNING_STORE_FILE / SIGNING_STORE_PASSWORD /
-            // SIGNING_KEY_ALIAS / SIGNING_KEY_PASSWORD。PKCS#12 格式（.p12）。
-            val storeFileProp = System.getenv("SIGNING_STORE_FILE") ?: ""
-            val storePasswordProp = System.getenv("SIGNING_STORE_PASSWORD") ?: ""
-            val keyAliasProp = System.getenv("SIGNING_KEY_ALIAS") ?: ""
-            val keyPasswordProp = System.getenv("SIGNING_KEY_PASSWORD") ?: ""
-            if (storeFileProp.isNotEmpty() && file(storeFileProp).exists()) {
-                storeFile = file(storeFileProp)
-                storePassword = storePasswordProp
-                keyAlias = keyAliasProp
-                keyPassword = keyPasswordProp
-                storeType = "PKCS12"
-            }
-        }
-        getByName("debug") {
-            storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
         }
     }
 
