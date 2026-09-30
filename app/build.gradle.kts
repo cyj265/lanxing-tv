@@ -13,6 +13,27 @@ android {
         targetSdk = 34
         versionCode = 67
         versionName = "1.15.3"
+
+        // 构建号：GitHub Actions 传入 RUN_NUMBER，本地构建默认 0
+        buildConfigField("int", "BUILD_NUMBER", (System.getenv("RUN_NUMBER") ?: "0").toString())
+
+        // Bugly AppID 不硬编码到源码：避免 fork 复用作者 Bugly 账户、污染崩溃数据。
+        // 优先级：local.properties > 环境变量 BUGLY_APP_ID > 空（空则不上报）。
+        // 注意：不能用 java.util.Properties —— Gradle Kotlin DSL 里 java 被解析为
+        // JavaPluginExtension 导致 Unresolved reference，故手动解析键值对。
+        val buglyAppId = run {
+            val f = rootProject.file("local.properties")
+            val fromFile = if (f.exists()) {
+                f.readLines()
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
+                    .map { it.split("=", limit = 2) }
+                    .firstOrNull { it[0].trim() == "BUGLY_APP_ID" }
+                    ?.get(1)?.trim()
+            } else null
+            fromFile ?: System.getenv("BUGLY_APP_ID") ?: ""
+        }
+        buildConfigField("String", "BUGLY_APP_ID", "\"$buglyAppId\"")
     }
 
     signingConfigs {
@@ -60,27 +81,6 @@ android {
         buildConfig = true
     }
 
-    // 构建号：GitHub Actions 传入 RUN_NUMBER，本地构建默认 0
-    // 用于更新检测：即使版本号相同，只要构建号增加就提示更新
-    defaultConfig {
-        buildConfigField("int", "BUILD_NUMBER", (System.getenv("RUN_NUMBER") ?: "0").toString())
-
-        // Bugly AppID 不硬编码到源码：避免 fork 复用作者 Bugly 账户、污染崩溃数据。
-        // 优先级：local.properties > 环境变量 BUGLY_APP_ID > 空（空则不上报）。
-        val buglyAppId = run {
-            val f = rootProject.file("local.properties")
-            val fromFile = if (f.exists()) {
-                f.readLines()
-                    .map { it.trim() }
-                    .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
-                    .map { it.split("=", limit = 2) }
-                    .firstOrNull { it[0].trim() == "BUGLY_APP_ID" }
-                    ?.get(1)?.trim()
-            } else null
-            fromFile ?: System.getenv("BUGGLY_APP_ID") ?: ""
-        }
-        buildConfigField("String", "BUGGLY_APP_ID", "\"$buglyAppId\"")
-    }
 }
 
 dependencies {
