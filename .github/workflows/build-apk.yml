@@ -52,6 +52,7 @@ jobs:
       - name: Build release APK
         env:
           RUN_NUMBER: ${{ github.run_number }}
+          BUGLY_APP_ID: ${{ secrets.BUGLY_APP_ID }}
           SIGNING_STORE_FILE: ${{ env.KEYSTORE_PATH }}
           SIGNING_STORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}

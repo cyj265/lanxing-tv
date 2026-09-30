@@ -64,6 +64,17 @@ android {
     // 用于更新检测：即使版本号相同，只要构建号增加就提示更新
     defaultConfig {
         buildConfigField("int", "BUILD_NUMBER", (System.getenv("RUN_NUMBER") ?: "0").toString())
+
+        // Bugly AppID 不硬编码到源码：避免 fork 复用作者 Bugly 账户、污染崩溃数据。
+        // 优先级：local.properties > 环境变量 BUGLY_APP_ID > 空（空则不上报）。
+        val buglyAppId = run {
+            val localProps = java.util.Properties().apply {
+                val f = rootProject.file("local.properties")
+                if (f.exists()) f.inputStream().use { load(it) }
+            }
+            localProps.getProperty("BUGGLY_APP_ID") ?: System.getenv("BUGGLY_APP_ID") ?: ""
+        }
+        buildConfigField("String", "BUGGLY_APP_ID", "\"$buglyAppId\"")
     }
 }
 

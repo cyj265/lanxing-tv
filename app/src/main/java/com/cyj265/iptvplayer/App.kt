@@ -23,7 +23,8 @@ import com.tencent.bugly.crashreport.CrashReport
 class App : Application() {
 
     companion object {
-        private const val BUGLY_APP_ID = "9f5599ea70"
+        // AppID 由 build.gradle.kts 从 local.properties / 环境变量注入，不再硬编码到源码
+        private val BUGLY_APP_ID = BuildConfig.BUGLY_APP_ID
     }
 
     override fun onCreate() {
