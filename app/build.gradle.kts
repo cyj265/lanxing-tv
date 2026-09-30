@@ -68,11 +68,16 @@ android {
         // Bugly AppID 不硬编码到源码：避免 fork 复用作者 Bugly 账户、污染崩溃数据。
         // 优先级：local.properties > 环境变量 BUGLY_APP_ID > 空（空则不上报）。
         val buglyAppId = run {
-            val localProps = java.util.Properties().apply {
-                val f = rootProject.file("local.properties")
-                if (f.exists()) f.inputStream().use { load(it) }
-            }
-            localProps.getProperty("BUGGLY_APP_ID") ?: System.getenv("BUGGLY_APP_ID") ?: ""
+            val f = rootProject.file("local.properties")
+            val fromFile = if (f.exists()) {
+                f.readLines()
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
+                    .map { it.split("=", limit = 2) }
+                    .firstOrNull { it[0].trim() == "BUGLY_APP_ID" }
+                    ?.get(1)?.trim()
+            } else null
+            fromFile ?: System.getenv("BUGGLY_APP_ID") ?: ""
         }
         buildConfigField("String", "BUGGLY_APP_ID", "\"$buglyAppId\"")
     }

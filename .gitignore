@@ -9,3 +9,5 @@
 .cxx
 local.properties
 app/build
+# CI 构建失败时自动生成的日志，勿入库（避免污染 main）
+build-errors.txt
