@@ -152,6 +152,16 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             uri?.let { exportCrashLogTo(it) }
         }
 
+    private val createBackupDoc =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+            uri?.let { writeBackupTo(it) }
+        }
+
+    private val openRestoreDoc =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let { restoreFrom(it) }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         installCrashHandler()
@@ -1413,6 +1423,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         refreshCrashLog()
         binding.btnExportCrashLog.setOnClickListener { launchCrashExport() }
         binding.btnExportAboutCrash.setOnClickListener { launchCrashExport() }
+        binding.btnBackupConfig.setOnClickListener { launchBackup() }
+        binding.btnRestoreConfig.setOnClickListener { confirmRestore() }
         binding.btnClearCrashLog.setOnClickListener {
             crashFile().delete()
             rememberGroupPrefs().edit().putBoolean("crash_prompted", false).apply()
@@ -1605,6 +1617,195 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         } catch (e: Exception) {
             Toast.makeText(applicationContext, "导出失败：${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+
+    // ---------- 配置备份 / 恢复（v1.16.0） ----------
+
+    /** 构建备份 JSON：直播源 + 当前源 + EPG 地址 + 收藏 + 全部偏好 */
+    private fun buildBackupJson(): JSONObject {
+        val json = JSONObject()
+        json.put("app", "lanxing-tv")
+        json.put("version", 1)
+        json.put("exportedAt", System.currentTimeMillis())
+        val sourcesArr = JSONArray()
+        repository.getSources().forEach { sourcesArr.put(it) }
+        json.put("sources", sourcesArr)
+        json.put("activeSourceIndex", repository.activeSourceIndex)
+        val epgArr = JSONArray()
+        repository.getEpgUrls().forEach { epgArr.put(it) }
+        json.put("epgUrls", epgArr)
+        val favArr = JSONArray()
+        favorites.forEach { favArr.put(it) }
+        json.put("favorites", favArr)
+        val prefs = JSONObject()
+        prefs.put("aspectRatio", repository.aspectRatio)
+        prefs.put("autoResume", repository.autoResume)
+        prefs.put("autoHideOverlay", repository.autoHideOverlay)
+        prefs.put("sleepTimerMinutes", repository.sleepTimerMinutes)
+        prefs.put("autoBoot", repository.autoBoot)
+        prefs.put("switchTimeoutSec", repository.switchTimeoutSec)
+        prefs.put("showClock", repository.showClock)
+        prefs.put("showSpeed", repository.showSpeed)
+        prefs.put("reverseZap", repository.reverseZap)
+        prefs.put("crossCategory", repository.crossCategory)
+        prefs.put("epgEnabled", repository.epgEnabled)
+        prefs.put("epgRefreshHours", repository.epgRefreshHours)
+        prefs.put("autoSelectFastest", repository.autoSelectFastest)
+        json.put("prefs", prefs)
+        return json
+    }
+
+    private fun launchBackup() {
+        val name = "lanxing-config-" +
+            SimpleDateFormat("yyyyMMdd-HHmmss", Locale.getDefault()).format(Date()) + ".json"
+        try {
+            createBackupDoc.launch(name)
+        } catch (e: ActivityNotFoundException) {
+            // TV 设备无文件管理器，降级直接写入应用外部目录
+            writeBackupToExternal(name)
+        } catch (e: Exception) {
+            Toast.makeText(applicationContext, "无法打开保存窗口：${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** 降级方案：直接写入应用外部文件目录（无需权限，文件管理器可访问） */
+    private fun writeBackupToExternal(name: String) {
+        try {
+            val dir = getExternalFilesDir(null) ?: filesDir
+            val outFile = java.io.File(dir, name)
+            outFile.writeText(buildBackupJson().toString(2), Charsets.UTF_8)
+            Toast.makeText(applicationContext, "已备份到：${outFile.absolutePath}", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(applicationContext, getString(R.string.backup_failed, e.message ?: "未知错误"), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun writeBackupTo(uri: Uri) {
+        try {
+            val os = contentResolver.openOutputStream(uri)
+            if (os == null) {
+                Toast.makeText(applicationContext, "无法写入目标位置，请重试或选择其他位置", Toast.LENGTH_LONG).show()
+                return
+            }
+            os.use { out -> out.write(buildBackupJson().toString(2).toByteArray(Charsets.UTF_8)) }
+            Toast.makeText(applicationContext, R.string.backup_done, Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(applicationContext, getString(R.string.backup_failed, e.message ?: "未知错误"), Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun confirmRestore() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.restore_config)
+            .setMessage(R.string.restore_confirm)
+            .setPositiveButton("确定") { _, _ -> openRestoreDoc.launch(arrayOf("application/json", "application/octet-stream", "*/*")) }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 从备份 JSON 恢复全部配置（子线程解析写回，主线程刷新 UI） */
+    private fun restoreFrom(uri: Uri) {
+        Thread {
+            try {
+                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                if (bytes == null) {
+                    runOnUiThread { Toast.makeText(applicationContext, R.string.restore_invalid, Toast.LENGTH_LONG).show() }
+                    return@Thread
+                }
+                val text = String(bytes, Charsets.UTF_8)
+                val json = JSONObject(text)
+                if (json.optString("app") != "lanxing-tv") {
+                    runOnUiThread { Toast.makeText(applicationContext, R.string.restore_invalid, Toast.LENGTH_LONG).show() }
+                    return@Thread
+                }
+
+                // 解析直播源与当前源
+                val sources = mutableListOf<String>()
+                val sourcesArr = json.optJSONArray("sources")
+                if (sourcesArr != null) {
+                    for (i in 0 until sourcesArr.length()) sources.add(sourcesArr.getString(i))
+                }
+                if (sources.isNotEmpty()) {
+                    repository.saveSources(sources)
+                    val idx = json.optInt("activeSourceIndex", 0).coerceIn(0, sources.size - 1)
+                    repository.activeSourceIndex = idx
+                }
+
+                // EPG 地址
+                val epgUrls = mutableListOf<String>()
+                val epgArr = json.optJSONArray("epgUrls")
+                if (epgArr != null) {
+                    for (i in 0 until epgArr.length()) epgUrls.add(epgArr.getString(i))
+                }
+                repository.setEpgUrls(epgUrls)
+
+                // 收藏
+                val favs = mutableSetOf<String>()
+                val favArr = json.optJSONArray("favorites")
+                if (favArr != null) {
+                    for (i in 0 until favArr.length()) favs.add(favArr.getString(i))
+                }
+                favorites = favs
+                repository.setFavorites(favs)
+
+                // 偏好
+                val prefs = json.optJSONObject("prefs")
+                if (prefs != null) {
+                    prefs.optString("aspectRatio").takeIf { it.isNotEmpty() }?.let { repository.aspectRatio = it }
+                    prefs.optString("autoResume").takeIf { it.isNotEmpty() }?.let { repository.autoResume = it.toBoolean() }
+                    prefs.optString("autoHideOverlay").takeIf { it.isNotEmpty() }?.let { repository.autoHideOverlay = it.toBoolean() }
+                    prefs.optString("sleepTimerMinutes").takeIf { it.isNotEmpty() }?.let { repository.sleepTimerMinutes = it.toInt() }
+                    prefs.optString("autoBoot").takeIf { it.isNotEmpty() }?.let { repository.autoBoot = it.toBoolean() }
+                    prefs.optString("switchTimeoutSec").takeIf { it.isNotEmpty() }?.let { repository.switchTimeoutSec = it.toInt() }
+                    prefs.optString("showClock").takeIf { it.isNotEmpty() }?.let { repository.showClock = it.toBoolean() }
+                    prefs.optString("showSpeed").takeIf { it.isNotEmpty() }?.let { repository.showSpeed = it.toBoolean() }
+                    prefs.optString("reverseZap").takeIf { it.isNotEmpty() }?.let { repository.reverseZap = it.toBoolean() }
+                    prefs.optString("crossCategory").takeIf { it.isNotEmpty() }?.let { repository.crossCategory = it.toBoolean() }
+                    prefs.optString("epgEnabled").takeIf { it.isNotEmpty() }?.let { repository.epgEnabled = it.toBoolean() }
+                    prefs.optString("epgRefreshHours").takeIf { it.isNotEmpty() }?.let { repository.epgRefreshHours = it.toInt() }
+                    prefs.optString("autoSelectFastest").takeIf { it.isNotEmpty() }?.let { repository.autoSelectFastest = it.toBoolean() }
+                }
+
+                runOnUiThread {
+                    try {
+                        // 刷新全部相关 UI
+                        adapter.favorites = favorites
+                        updateFavCount()
+                        refreshSourceUI()
+                        refreshSettingsSourceInput()
+                        updateSourceOptions()
+                        setupTimeoutOptions()
+                        updateTimeoutSelection()
+                        playback.setSourceTimeoutMs(repository.switchTimeoutSec * 1000L)
+                        playback.setAspectRatio(repository.aspectRatio)
+                        updateAspectRatioSelection()
+                        updateAutoSelectFastestUI()
+                        binding.chkShowClock.isChecked = repository.showClock
+                        binding.chkShowSpeed.isChecked = repository.showSpeed
+                        binding.chkReverseZap.isChecked = repository.reverseZap
+                        binding.chkCrossCategory.isChecked = repository.crossCategory
+                        binding.chkAutoResume.isChecked = repository.autoResume
+                        binding.chkAutoHide.isChecked = repository.autoHideOverlay
+                        binding.chkAutoBoot.isChecked = repository.autoBoot
+                        updateSleepTimerUI()
+                        refreshEpgUrlDisplay()
+                        updateEpgEnabledUI()
+                        updateEpgRefreshUI()
+                        currentChannel = null
+                        adapter.setSelected(null)
+                        reloadPlaylist(true)
+                        loadEpgIfConfigured()
+                        Toast.makeText(applicationContext, R.string.restore_done, Toast.LENGTH_LONG).show()
+                    } catch (e: Throwable) {
+                        Toast.makeText(applicationContext, getString(R.string.restore_failed, e.message ?: "未知错误"), Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(applicationContext, getString(R.string.restore_failed, e.message ?: "未知错误"), Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
     }
 
     // ---------- 超时换源 ----------
@@ -2025,6 +2226,20 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             try {
                 val content = HttpLoader.fetch(url)
                 val channels = PlaylistParser.parseAuto(content)
+                // v1.16.0：M3U 头部 url-tvg 自动预填 EPG（仅当尚未配置节目单时）
+                if (repository.getEpgUrls().isEmpty()) {
+                    val epgFromM3u = PlaylistParser.extractEpgUrls(content)
+                    if (epgFromM3u.isNotEmpty()) {
+                        repository.setEpgUrls(epgFromM3u)
+                        runOnUiThread {
+                            try {
+                                refreshEpgUrlDisplay()
+                                loadEpgIfConfigured()
+                                Toast.makeText(applicationContext, "已从播放列表自动识别节目单地址", Toast.LENGTH_SHORT).show()
+                            } catch (ignored: Throwable) {}
+                        }
+                    }
+                }
                 if (channels.isNotEmpty()) {
                     repository.saveChannels(channels, url)
                 }
@@ -2097,6 +2312,19 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                     text = String(content, java.nio.charset.Charset.forName("GBK"))
                 }
                 val channels = PlaylistParser.parseAuto(text)
+                // v1.16.0：本地 M3U 头部 url-tvg 自动预填 EPG
+                if (repository.getEpgUrls().isEmpty()) {
+                    val epgFromM3u = PlaylistParser.extractEpgUrls(text)
+                    if (epgFromM3u.isNotEmpty()) {
+                        repository.setEpgUrls(epgFromM3u)
+                        runOnUiThread {
+                            try {
+                                refreshEpgUrlDisplay()
+                                loadEpgIfConfigured()
+                            } catch (ignored: Throwable) {}
+                        }
+                    }
+                }
                 if (channels.isEmpty()) {
                     runOnUiThread { Toast.makeText(applicationContext, R.string.no_channels, Toast.LENGTH_SHORT).show() }
                     return@Thread
