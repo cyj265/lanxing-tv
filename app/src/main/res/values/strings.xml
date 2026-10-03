@@ -127,4 +127,14 @@
     <string name="export_empty">运行日志为空，无需导出</string>
 
     <string name="fav_count">已收藏 %1$d 个频道</string>
+
+    <!-- 备份 / 恢复 -->
+    <string name="backup_config">备份配置</string>
+    <string name="restore_config">恢复配置</string>
+    <string name="backup_done">配置已备份</string>
+    <string name="backup_failed">备份失败：%1$s</string>
+    <string name="restore_done">配置已恢复，正在重新加载…</string>
+    <string name="restore_failed">恢复失败：%1$s</string>
+    <string name="restore_confirm">恢复配置将覆盖当前直播源、节目单地址、收藏与偏好设置，确定继续？</string>
+    <string name="restore_invalid">备份文件格式无效</string>
 </resources>

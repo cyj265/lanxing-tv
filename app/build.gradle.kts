@@ -1,4 +1,4 @@
-﻿plugins {
+plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
@@ -11,8 +11,8 @@ android {
         applicationId = "com.cyj265.iptvplayer"
         minSdk = 23
         targetSdk = 34
-        versionCode = 67
-        versionName = "1.15.3"
+        versionCode = 68
+        versionName = "1.16.0"
 
         // 构建号：GitHub Actions 传入 RUN_NUMBER，本地构建默认 0
         buildConfigField("int", "BUILD_NUMBER", (System.getenv("RUN_NUMBER") ?: "0").toString())
