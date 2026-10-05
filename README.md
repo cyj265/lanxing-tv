@@ -86,15 +86,13 @@
 
 打开应用后，按遥控器**菜单键**进入设置 → 直播源，添加播放列表地址（M3U/M3U8/TXT），或用手机扫码快速添加。未添加播放源时界面会显示引导提示。
 
-> 推送到 `main` 分支会自动触发 GitHub Actions 构建并发布 Release（Release 列表只保留最近 3 个）。
->
-> **签名说明**：构建使用固定 release 自签证书（PKCS#12，密钥通过 GitHub Secrets 注入，有效期 25 年，仓库内不存放密钥文件）。签名长期固定，所有版本都可以直接覆盖安装，配置保留。
+> 推送到 `main` 分支会自动触发 GitHub Actions 构建并发布 Release（Release 列表只保留最近 3 个）。各版本可直接覆盖安装，播放列表、收藏与配置全部保留。
 
 ## 在 GitHub 上构建
 
 推送到 `main` 分支会自动触发 GitHub Actions 构建 APK（也可以在 Actions 页面手动 Run workflow）。
 
-- 构建产物：`assembleRelease`，用 release 自签密钥签名，可直接侧载安装
+- 构建产物：`assembleRelease`，可直接侧载安装
 - 构建成功后自动发布 Release 并只保留最近 3 个版本
 - 构建失败时自动将错误日志提交为 `build-errors.txt` 到仓库根目录
 

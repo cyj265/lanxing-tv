@@ -1872,6 +1872,35 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         }
     }
 
+    /**
+     * 从 Release 说明里提取更新要点，只保留条目行，最多 6 条。
+     * 说明为空或格式不符时返回空串，弹窗自动省略"本次更新"部分。
+     */
+    private fun formatReleaseNotes(body: String?): String {
+        if (body.isNullOrBlank()) return ""
+        val items = body.lineSequence()
+            .map { it.trim() }
+            .filter { it.startsWith("- ") || it.startsWith("* ") }
+            .map { it.removePrefix("* ").removePrefix("- ").trim() }
+            .filter { it.isNotEmpty() }
+            .toList()
+        if (items.isEmpty()) return ""
+        val shown = items.take(6)
+        return buildString {
+            for (item in shown) append("- ").append(item).append('\n')
+            if (items.size > shown.size) append("…")
+        }.trimEnd()
+    }
+
+    /** 更新弹窗文案：版本对比 + 本次更新要点。 */
+    private fun buildUpdateMessage(tag: String, latestBuild: Int, notes: String): String =
+        buildString {
+            append("揽星TV v$tag (构建 #$latestBuild) 已发布\n")
+            append("当前版本：v${BuildConfig.VERSION_NAME} (构建 #${BuildConfig.BUILD_NUMBER})")
+            if (notes.isNotBlank()) append("\n\n本次更新：\n$notes")
+            append("\n\n是否立即更新？")
+        }
+
     private fun checkUpdateSilent() {
         Thread {
             try {
@@ -1903,7 +1932,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                         try {
                             AlertDialog.Builder(this)
                                 .setTitle("发现新版本")
-                                .setMessage("揽星TV v$tag (构建 #$latestBuild) 已发布\n当前版本：v${BuildConfig.VERSION_NAME} (构建 #$currentBuild)\n\n⚠️ 本次更新更换了签名证书，如安装失败请先卸载旧版后重新安装（播放列表和收藏需重新配置）。\n\n是否立即更新？")
+                                .setMessage(buildUpdateMessage(tag, latestBuild, formatReleaseNotes(json.optString("body"))))
                                 .setPositiveButton("立即更新") { _, _ ->
                                     downloadAndInstall(apkUrl)
                                 }
@@ -1957,7 +1986,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                                 getString(R.string.update_found) + " v" + tag + " #$latestBuild"
                             AlertDialog.Builder(this@MainActivity)
                                 .setTitle("发现新版本")
-                                .setMessage("揽星TV v$tag (构建 #$latestBuild) 已发布\n当前版本：v${BuildConfig.VERSION_NAME} (构建 #$currentBuild)\n\n⚠️ 本次更新更换了签名证书，如安装失败请先卸载旧版后重新安装（播放列表和收藏需重新配置）。\n\n是否立即更新？")
+                                .setMessage(buildUpdateMessage(tag, latestBuild, formatReleaseNotes(json.optString("body"))))
                                 .setPositiveButton("立即更新") { _, _ ->
                                     downloadAndInstall(apkUrl)
                                 }
