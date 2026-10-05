@@ -11,8 +11,8 @@ android {
         applicationId = "com.cyj265.iptvplayer"
         minSdk = 23
         targetSdk = 34
-        versionCode = 68
-        versionName = "1.16.0"
+        versionCode = 69
+        versionName = "1.16.1"
 
         // 构建号：GitHub Actions 传入 RUN_NUMBER，本地构建默认 0
         buildConfigField("int", "BUILD_NUMBER", (System.getenv("RUN_NUMBER") ?: "0").toString())
@@ -84,27 +84,29 @@ android {
 }
 
 dependencies {
+    // core-ktx 保持 1.13.1：1.15+ 起要求 AGP 9.1.0 / compileSdk 37，
+    // 升级需同步跳 AGP 9.x + Gradle 9.x，留到构建链专项升级时一起做。
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("androidx.appcompat:appcompat:1.7.0")
-    implementation("androidx.recyclerview:recyclerview:1.3.2")
-    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
+    implementation("androidx.appcompat:appcompat:1.8.0")
+    implementation("androidx.recyclerview:recyclerview:1.4.0")
+    implementation("androidx.constraintlayout:constraintlayout:2.2.2")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
 
     // Media3 (ExoPlayer) 播放内核
-    // 1.11.0（2026-08 稳定版）：升级以获取 HLS/H.265 时间戳容错修复。
+    // 1.11.1（1.11.0 的补丁版）：用于 HLS/H.265 时间戳容错修复。
     // 历史：1.4.1 曾长期固定（影视仓同代内核，T1 兼容性最好）；
     // 1.8.0 曾出现 HEVC 硬解 DECODER_INIT_FAILED，故回退 1.4.1。
     // 本次升级目标：解决甘肃移动 IPTV H.265 HLS 流 SampleQueue.commitSample
     // 时间戳非单调递增导致的播放失败（4K/极清频道）。
     // 注：v1.5.0 曾尝试 libVLC 3.5.1 内核（83MB），T1 实测仅 1080P 正常、
     // 4K 花屏/720P 黑屏，且体积过大，已回退纯 EXO 方案。
-    implementation("androidx.media3:media3-exoplayer:1.11.0")
-    implementation("androidx.media3:media3-exoplayer-hls:1.11.0")
-    implementation("androidx.media3:media3-ui:1.11.0")
+    implementation("androidx.media3:media3-exoplayer:1.11.1")
+    implementation("androidx.media3:media3-exoplayer-hls:1.11.1")
+    implementation("androidx.media3:media3-ui:1.11.1")
 
     // 扫码局域网管理：轻量 HTTP 服务 + 二维码编码（体积小，无额外权限）
     implementation("org.nanohttpd:nanohttpd:2.3.1")
-    implementation("com.google.zxing:core:3.5.3")
+    implementation("com.google.zxing:core:3.5.4")
 
     // Bugly 崩溃自动上报（崩溃自动上传到 bugly.qq.com，无需用户手动导出日志）
     // AppID 在 App.kt 中配置，为空则不上报

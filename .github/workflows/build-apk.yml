@@ -27,14 +27,6 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      # 位图图标以 base64 文本形式入库（推送通道无法直接传二进制），构建前解码还原为 PNG
-      - name: Decode base64 assets
-        run: |
-          find app/src/main/res -name '*.b64' | while read f; do
-            base64 -d "$f" > "${f%.b64}"
-            rm -f "$f"
-          done
-
       # release 自签证书：从 Secrets 解码为 PKCS#12 文件，避免 debug 证书被 Google Play Protect 拦截。
       - name: Setup release keystore
         id: release-keystore
