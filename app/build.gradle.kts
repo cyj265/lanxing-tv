@@ -90,7 +90,11 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("androidx.recyclerview:recyclerview:1.4.0")
     implementation("androidx.constraintlayout:constraintlayout:2.2.2")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
+    // lifecycle 保持 2.8.4：2.11.0 的 lint 检测器（NonNullableMutableLiveDataDetector）
+    // 依赖新版 Kotlin 分析 API，与 AGP 8.7.3 内置 lint 运行时不兼容，
+    // 会在 lintVitalAnalyzeRelease 抛 IncompatibleClassChangeError 导致构建失败。
+    // 本应用未使用 LiveData，待 AGP 升级到 8.13+ 后再一并提升。
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
 
     // Media3 (ExoPlayer) 播放内核
     // 1.11.1（1.11.0 的补丁版）：用于 HLS/H.265 时间戳容错修复。
