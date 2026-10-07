@@ -591,6 +591,21 @@ class PlaybackManager(
             p.playWhenReady = true
         }
     }
+
+    /**
+     * 离开前台（onStop）时调用：停止解码与渲染，播放器实例保留。
+     *
+     * 为什么不直接 release()：重新初始化解码器在部分低内存老盒子上会触发
+     * "解码器 init 失败黑屏"（本项目历史问题），而暂停已能停掉解码工作与功耗，
+     * 回到前台 resumeIfPaused() 秒级续播，两害相权取轻。
+     */
+    fun pauseForBackground() {
+        val p = player ?: return
+        try {
+            if (p.playWhenReady) p.pause()
+        } catch (e: Exception) {
+        }
+    }
     /**
      * 丰富的崩溃日志记录：包含设备信息、播放状态、视频格式、网络、内存等，
      * 便于真机定位解码/渲染/网络问题。

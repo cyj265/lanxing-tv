@@ -7,10 +7,12 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Process
+import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
@@ -85,6 +87,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     /** 分组选中后待定位的频道行位置（右键进频道列表时使用） */
     private var pendingChannelScrollPos = -1
     private var lastBackPressTime: Long = 0
+    /** 上次自动检查更新的时间戳（12 小时节流，防 GitHub API 限流） */
+    private var lastUpdateCheckAt: Long = 0
     private var autoUpdateCheck: Boolean = true
     private var favorites: MutableSet<String> = HashSet()
     private var showFavoritesOnly = false
@@ -138,6 +142,10 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                     adapter.epgNext = buildEpgNextMap()
                     updateProgramInfo()
                 }
+                // 每 5 分钟检查一次节目单是否过期（盒子常年不关机，节目单不能停在开机那一刻）
+                if (clockTick % 300 == 0) {
+                    maybeRefreshEpg()
+                }
             } catch (ignored: Throwable) {
             }
             clockHandler.postDelayed(this, 1000L)
@@ -162,6 +170,21 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     private val openRestoreDoc =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             uri?.let { restoreFrom(it) }
+        }
+
+    /** 等待授权「安装未知应用」期间暂存的安装包 */
+    private var pendingInstallApk: File? = null
+
+    /** 从系统授权页返回：已授权则继续拉起安装器 */
+    private val installPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            val apk = pendingInstallApk
+            pendingInstallApk = null
+            if (apk != null && apk.exists() && canInstallPackages()) {
+                launchInstaller(apk)
+            } else if (apk != null && apk.exists()) {
+                Toast.makeText(applicationContext, "还没有开启安装授权，无法更新", Toast.LENGTH_LONG).show()
+            }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -295,6 +318,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         // 启动自动检查更新（可在设置-关于里开关）
         autoUpdateCheck = getSharedPreferences("settings", MODE_PRIVATE).getBoolean("auto_update_check", true)
         if (autoUpdateCheck) {
+            lastUpdateCheckAt =
+                getSharedPreferences("settings", MODE_PRIVATE).getLong("last_update_check", 0L)
             checkUpdateSilent()
         }
     }
@@ -337,6 +362,18 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     override fun onPause() {
         clockHandler.removeCallbacks(clockRunnable)
         super.onPause()
+    }
+
+    /**
+     * 离开前台时停止解码：只暂停、保留播放器实例（重新初始化解码器在老盒子上
+     * 会触发黑屏，见 PlaybackManager.pauseForBackground 注释）。回前台由 onResume 续播。
+     */
+    override fun onStop() {
+        try {
+            playback.pauseForBackground()
+        } catch (ignored: Throwable) {
+        }
+        super.onStop()
     }
 
     // ---------- 运行日志（启动/播放/问题定位用） ----------
@@ -1931,6 +1968,16 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         }
 
     private fun checkUpdateSilent() {
+        // 本地节流：12 小时内只自动检查一次。GitHub 未认证 API 限流 60 次/小时/IP，
+        // 公开用户在同一出口 IP 下频繁启动会触发 403，这里先自己降频。
+        val now = System.currentTimeMillis()
+        if (now - lastUpdateCheckAt < 12 * 3600_000L) return
+        lastUpdateCheckAt = now
+        try {
+            getSharedPreferences("settings", MODE_PRIVATE)
+                .edit().putLong("last_update_check", now).apply()
+        } catch (ignored: Throwable) {
+        }
         Thread {
             try {
                 val conn = URL(
@@ -2141,7 +2188,65 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         }.start()
     }
 
+    /**
+     * 拉起系统安装器。Android 8.0+ 目标来源未授权时系统会直接拒绝 ACTION_VIEW，
+     * 因此先检测 canRequestPackageInstalls()，未授权则引导到系统授权页，返回后再装。
+     */
     private fun installApk(apk: File) {
+        try {
+            if (!canInstallPackages()) {
+                pendingInstallApk = apk
+                showInstallPermissionDialog()
+                return
+            }
+            launchInstaller(apk)
+        } catch (e: Exception) {
+            Toast.makeText(applicationContext, "无法打开安装器：${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    /** Android 8.0+ 需要"允许安装未知应用"授权；7.x 及以下没有这个限制 */
+    private fun canInstallPackages(): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                packageManager.canRequestPackageInstalls()
+            } else {
+                true
+            }
+        } catch (e: Exception) {
+            true
+        }
+    }
+
+    private fun showInstallPermissionDialog() {
+        try {
+            AlertDialog.Builder(this)
+                .setTitle("需要授权安装更新")
+                .setMessage(
+                    "Android 要求先允许本应用安装更新包。\n\n" +
+                        "点「去授权」后在系统页面打开「允许来自此来源的应用」，" +
+                        "返回本应用即可继续安装。"
+                )
+                .setPositiveButton("去授权") { _, _ ->
+                    try {
+                        installPermissionLauncher.launch(
+                            Intent(
+                                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                Uri.parse("package:$packageName")
+                            )
+                        )
+                    } catch (e: Exception) {
+                        Toast.makeText(applicationContext, "无法打开授权页面：${e.message}", Toast.LENGTH_LONG).show()
+                    }
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        } catch (e: Exception) {
+            Toast.makeText(applicationContext, "无法弹出授权提示：${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun launchInstaller(apk: File) {
         try {
             val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", apk)
             val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -2731,7 +2836,31 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
 
     // ---------- EPG（支持多个地址，全部加载合并） ----------
 
-    private fun loadEpgIfConfigured() {
+    /**
+     * 定时刷新节目单（每 5 分钟检查一次）：
+     * 超过设置的刷新间隔（默认 2 小时）才后台重新拉取，静默进行不弹 Toast。
+     */
+    private fun maybeRefreshEpg() {
+        try {
+            if (!repository.epgEnabled) return
+            if (epgLoadState == EpgLoadState.LOADING) return
+            if (repository.getEpgUrls().isEmpty()) return
+            val now = System.currentTimeMillis()
+            val updatedAt = repository.epgUpdatedAt
+            val interval = repository.epgRefreshHours.coerceAtLeast(1) * 3600_000L
+            // 成功加载过且未到刷新间隔 → 不动
+            if (updatedAt > 0 && now - updatedAt < interval) return
+            // 从未成功加载过（updatedAt=0）时交给手动刷新，避免持续失败时反复轰炸网络
+            if (updatedAt <= 0) return
+            // 距上次尝试至少 30 分钟，防止网络不通时反复重试
+            if (now - lastEpgAttemptAt < 30 * 60_000L) return
+            loadEpgIfConfigured(silent = true)
+        } catch (ignored: Throwable) {
+        }
+    }
+
+    /** silent=true 用于定时刷新，不再弹"加载成功/失败"的 Toast 打扰用户 */
+    private fun loadEpgIfConfigured(silent: Boolean = false) {
         // v1.14.0：节目单开关（设置里可关闭）
         if (!repository.epgEnabled) {
             epgLoadState = EpgLoadState.NOT_CONFIGURED
@@ -2810,12 +2939,14 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                     updateProgramInfo()
                     updateSourceStatus()
                     if (finalState == EpgLoadState.FAILED) {
-                        Toast.makeText(
-                            applicationContext,
-                            "节目指南加载失败" + (if (err != null) "：" + err else ""),
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } else if (finalState == EpgLoadState.READY && totalPrograms > 0) {
+                        if (!silent) {
+                            Toast.makeText(
+                                applicationContext,
+                                "节目指南加载失败" + (if (err != null) "：" + err else ""),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    } else if (finalState == EpgLoadState.READY && totalPrograms > 0 && !silent) {
                         Toast.makeText(
                             applicationContext,
                             "节目指南加载成功（" + totalPrograms + " 条节目）",
