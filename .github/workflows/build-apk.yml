@@ -52,6 +52,11 @@ jobs:
         run: |
           echo "SIGNING_STORE_FILE=$SIGNING_STORE_FILE"
           ls -la "$SIGNING_STORE_FILE" 2>&1 || echo "keystore file not found!"
+          if [ -z "$BUGLY_APP_ID" ]; then
+            echo "::warning title=Bugly::secret BUGLY_APP_ID 为空，本次构建不会启用崩溃上报"
+          else
+            echo "::notice title=Bugly::已注入 BUGLY_APP_ID（长度 ${#BUGLY_APP_ID}）"
+          fi
           set +e
           gradle assembleRelease --no-daemon 2>&1 | tee build.log
           status=${PIPESTATUS[0]}

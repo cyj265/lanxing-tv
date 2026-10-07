@@ -31,8 +31,18 @@ android {
                     .firstOrNull { it[0].trim() == "BUGLY_APP_ID" }
                     ?.get(1)?.trim()
             } else null
-            fromFile ?: System.getenv("BUGLY_APP_ID") ?: ""
+            // 两级都要求非空：避免某一侧存在但值为空时把另一侧覆盖掉
+            val fromEnv = System.getenv("BUGLY_APP_ID")?.trim()
+            fromFile?.takeIf { it.isNotEmpty() } ?: fromEnv?.takeIf { it.isNotEmpty() } ?: ""
         }
+        // 只打印长度与来源，不打印 App ID 本身；CI 日志里一眼能看出 secret 有没有生效
+        println(
+            "[bugly] BUGLY_APP_ID " + if (buglyAppId.isEmpty()) {
+                "未注入（本次构建不会启用崩溃上报）"
+            } else {
+                "已注入，长度=${buglyAppId.length}"
+            }
+        )
         buildConfigField("String", "BUGLY_APP_ID", "\"$buglyAppId\"")
     }
 
