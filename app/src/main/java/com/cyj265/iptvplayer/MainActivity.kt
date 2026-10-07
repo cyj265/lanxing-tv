@@ -89,6 +89,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     private var favorites: MutableSet<String> = HashSet()
     private var showFavoritesOnly = false
     private var currentChannel: Channel? = null
+    /** 频道列表中当前获得焦点的频道（用于"收藏当前焦点频道"） */
+    private var lastFocusedChannel: Channel? = null
     private var epgPrograms: Map<String, List<EpgProgram>> = emptyMap()
     /** EPG 加载状态：区分"未配置/加载中/就绪/失败"四种提示 */
     private enum class EpgLoadState { NOT_CONFIGURED, LOADING, READY, FAILED }
@@ -201,6 +203,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 // 换台预加载：焦点频道预热 DNS+TCP，OK 键播放时省握手时间
                 playback.preloadChannel(ch.sources.ifEmpty { listOf(ch.url) })
                 // 焦点移动只更新节目信息，不自动换台（OK 键才播放）
+                // 同步工具条"收藏"按钮的选中态（跟随当前焦点频道）
+                updateFavoriteIcon()
             }
         )
         adapter.favorites = favorites
@@ -499,12 +503,32 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         // 记录右栏目标位置（当前播放频道或分组第一个）
         val curPos = currentChannel?.let { adapter.positionOfChannel(it.id) } ?: -1
         pendingChannelScrollPos = if (curPos >= 0) curPos else adapter.firstPositionOfGroup(currentGroup ?: "")
+        // 打开面板就立即把右栏滚动到当前频道（之前必须再按一次右键才定位）
+        scrollChannelListTo(pendingChannelScrollPos)
         binding.groupList.post {
             if (groupPos >= 0) {
                 val holder = binding.groupList.findViewHolderForAdapterPosition(groupPos)
                 holder?.itemView?.requestFocus()
             }
             if (!binding.groupList.hasFocus()) binding.groupList.requestFocus()
+        }
+    }
+
+    /**
+     * 把右栏频道列表滚动到指定行并居中。
+     * scrollToPosition 只做一次请求、不会立即布局，所以先滚动再延迟一帧用
+     * scrollToPositionWithOffset 兜底，保证该行真正可见（findViewHolder 才拿得到）。
+     */
+    private fun scrollChannelListTo(pos: Int) {
+        if (pos < 0) return
+        try {
+            binding.channelList.scrollToPosition(pos)
+            binding.channelList.post {
+                val lm = binding.channelList.layoutManager as? LinearLayoutManager ?: return@post
+                // 把目标行放在可视区上部 1/3 处，既不贴顶也能看到上下文
+                lm.scrollToPositionWithOffset(pos, (binding.channelList.height / 3).coerceAtLeast(0))
+            }
+        } catch (ignored: Throwable) {
         }
     }
 
@@ -561,10 +585,13 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             applyFilter()
             binding.tvStatus.text =
                 if (showFavoritesOnly) getString(R.string.favorites) else getString(R.string.channel_list)
+            updateFavoriteIcon()
         }
         binding.btnPrev.setOnClickListener { switchChannel(-1) }
         binding.btnNext.setOnClickListener { switchChannel(1) }
         binding.btnFavoriteCurrent.setOnClickListener { toggleFavoriteCurrent() }
+        // 频道列表工具条：对当前焦点频道（无焦点时为正在播放频道）收藏/取消收藏
+        binding.btnFavoriteFocused.setOnClickListener { toggleFavoriteFocused() }
     }
 
     // ---------- 线路选择 ----------
@@ -1327,6 +1354,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             favorites.clear()
             repository.setFavorites(favorites)
             adapter.favorites = favorites
+            refreshFavoriteMarks()
+            updateFavoriteIcon()
             updateFavCount()
             Toast.makeText(applicationContext, R.string.cleared, Toast.LENGTH_SHORT).show()
         }
@@ -2377,7 +2406,6 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
 
     // ---------- 频道筛选 ----------
 
-    private var lastFocusedChannel: com.cyj265.iptvplayer.data.Channel? = null
     private val previewHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var previewRunnable: Runnable? = null
 
@@ -2550,18 +2578,59 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         updateLineupLabel()
     }
 
+    /**
+     * 换台防抖：遥控器按住上下键会连发 KEYCODE_DPAD_UP/DOWN，
+     * 若每次都立即起播，播放器会在几十毫秒内反复重建，N1 上极易触发解码器初始化失败/黑屏。
+     * 这里把连发合并：期间只更新标题提示，停手 ~260ms 后只播放最终停留的频道。
+     */
+    private companion object {
+        const val CHANNEL_SWITCH_DEBOUNCE_MS = 260L
+    }
+    private val switchHandler = Handler(Looper.getMainLooper())
+    private var pendingSwitchDelta = 0
+    private var lastSwitchAt = 0L
+    private val pendingSwitchRunnable = Runnable {
+        val delta = pendingSwitchDelta
+        pendingSwitchDelta = 0
+        if (delta != 0) performSwitchChannel(delta)
+    }
+
     private fun switchChannel(delta: Int) {
         if (allChannels.isEmpty()) return
+        val now = System.currentTimeMillis()
+        val isBurst = now - lastSwitchAt < CHANNEL_SWITCH_DEBOUNCE_MS
+        if (!isBurst && pendingSwitchDelta == 0) {
+            performSwitchChannel(delta)
+            return
+        }
+        // 连发：累积位移，延迟到停手后再真正起播
+        pendingSwitchDelta += delta
+        switchHandler.removeCallbacks(pendingSwitchRunnable)
+        switchHandler.postDelayed(pendingSwitchRunnable, CHANNEL_SWITCH_DEBOUNCE_MS)
+        // 期间只提示将切到的频道，不重建播放器
+        resolveTargetChannel(pendingSwitchDelta)?.let { showPendingChannelHint(it) }
+    }
+
+    /** 连按换台期间的轻量提示：只改标题文字，不起播。 */
+    private fun showPendingChannelHint(ch: Channel) {
+        try {
+            binding.tvChannelName.maxLines = 1
+            binding.tvChannelName.text = "→ ${ch.name}"
+        } catch (ignored: Throwable) {
+        }
+    }
+
+    /** 按位移计算目标频道（不播放）。 */
+    private fun resolveTargetChannel(delta: Int): Channel? {
+        if (allChannels.isEmpty()) return null
         val current = currentChannel
-        // 换台反转：上下键逻辑反转
         val realDelta = if (repository.reverseZap) -delta else delta
         if (showFavoritesOnly) {
             val favChannels = allChannels.filter { favorites.contains(it.url) }
-            if (favChannels.isEmpty()) return
+            if (favChannels.isEmpty()) return null
             val favIdx = favChannels.indexOfFirst { it.id == current?.id }
             val next = if (favIdx < 0) 0 else (favIdx + realDelta + favChannels.size) % favChannels.size
-            onChannelClick(favChannels[next])
-            return
+            return favChannels[next]
         }
         // 跨选分类：关闭时只在当前分组内循环
         if (!repository.crossCategory && current != null) {
@@ -2569,31 +2638,95 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             if (sameGroup.size > 1) {
                 val gIdx = sameGroup.indexOfFirst { it.id == current.id }
                 val next = if (gIdx < 0) 0 else (gIdx + realDelta + sameGroup.size) % sameGroup.size
-                onChannelClick(sameGroup[next])
-                return
+                return sameGroup[next]
             }
         }
         val idx = allChannels.indexOfFirst { it.id == current?.id }
         val next = if (idx < 0) 0 else (idx + realDelta + allChannels.size) % allChannels.size
-        onChannelClick(allChannels[next])
+        return allChannels[next]
+    }
+
+    private fun performSwitchChannel(delta: Int) {
+        val target = resolveTargetChannel(delta) ?: return
+        lastSwitchAt = System.currentTimeMillis()
+        onChannelClick(target)
     }
 
     private fun toggleFavoriteCurrent() {
-        val ch = currentChannel ?: return
-        if (favorites.contains(ch.url)) {
+        val ch = currentChannel
+        if (ch == null) {
+            Toast.makeText(applicationContext, "当前没有正在播放的频道", Toast.LENGTH_SHORT).show()
+            return
+        }
+        toggleFavorite(ch)
+    }
+
+    /** 收藏/取消收藏：优先作用于频道列表中当前获得焦点的频道，其次正在播放的频道。 */
+    private fun toggleFavoriteFocused() {
+        val ch = lastFocusedChannel ?: currentChannel
+        if (ch == null) {
+            Toast.makeText(applicationContext, "请先把焦点移到要收藏的频道", Toast.LENGTH_SHORT).show()
+            return
+        }
+        toggleFavorite(ch)
+    }
+
+    private fun toggleFavorite(ch: Channel) {
+        val added = if (favorites.contains(ch.url)) {
             favorites.remove(ch.url)
+            false
         } else {
             favorites.add(ch.url)
+            true
         }
         repository.setFavorites(favorites)
         adapter.favorites = favorites
+        // 仅收藏筛选模式下需要重刷列表；否则只刷新星标并原地恢复焦点
+        if (showFavoritesOnly) {
+            applyFilter()
+        } else {
+            refreshFavoriteMarks()
+        }
         updateFavoriteIcon()
         updateFavCount()
+        Toast.makeText(
+            applicationContext,
+            if (added) getString(R.string.favorite_added, ch.name) else getString(R.string.favorite_removed, ch.name),
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    /** 只刷新频道行的收藏星标：记住焦点行位置，刷新后原地恢复，避免跳位/丢焦点。 */
+    private fun refreshFavoriteMarks() {
+        val focusedChild = binding.channelList.focusedChild
+        val focusedPos = if (focusedChild != null) {
+            binding.channelList.getChildAdapterPosition(focusedChild)
+        } else {
+            -1
+        }
+        adapter.notifyDataSetChanged()
+        if (focusedPos >= 0) {
+            binding.channelList.post {
+                binding.channelList.findViewHolderForAdapterPosition(focusedPos)?.itemView?.requestFocus()
+            }
+        }
     }
 
     private fun updateFavoriteIcon() {
-        val ch = currentChannel ?: return
-        binding.btnFavoriteCurrent.alpha = if (favorites.contains(ch.url)) 1f else 0.4f
+        binding.btnFavoriteCurrent.alpha = if (currentChannel?.let { favorites.contains(it.url) } == true) 1f else 0.4f
+        val focused = lastFocusedChannel ?: currentChannel
+        val focusedFav = focused?.let { favorites.contains(it.url) } == true
+        // 已收藏：高亮金色 + 不透明；未收藏：灰色半透明
+        binding.btnFavoriteFocused.alpha = if (focusedFav) 1f else 0.45f
+        binding.btnFavoriteFocused.setColorFilter(
+            if (focusedFav) resources.getColor(R.color.accent, theme)
+            else resources.getColor(R.color.text_secondary, theme)
+        )
+        binding.btnFavorites.alpha = if (showFavoritesOnly) 1f else 0.45f
+        binding.btnFavorites.setColorFilter(
+            if (showFavoritesOnly) resources.getColor(R.color.accent, theme)
+            else resources.getColor(R.color.text_secondary, theme)
+        )
     }
 
     // ---------- EPG（支持多个地址，全部加载合并） ----------
@@ -3053,18 +3186,30 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                                 ?: adapter.firstPositionOfGroup(currentGroup ?: "")
                         }
                         if (targetPos >= 0) {
-                            binding.channelList.scrollToPosition(targetPos)
+                            scrollChannelListTo(targetPos)
                         }
                         pendingChannelScrollPos = -1
                         binding.channelList.post {
                             if (targetPos >= 0) {
-                                val holder = binding.channelList.findViewHolderForAdapterPosition(targetPos)
-                                holder?.itemView?.requestFocus()
+                                // 再延迟一帧等布局完成，否则未布局的行 findViewHolder 返回 null
+                                binding.channelList.post {
+                                    val holder = binding.channelList.findViewHolderForAdapterPosition(targetPos)
+                                    holder?.itemView?.requestFocus()
+                                }
                             }
                             if (!binding.channelList.hasFocus()) binding.channelList.requestFocus()
                         }
                     }
                     true
+                }
+                KeyEvent.KEYCODE_MENU -> {
+                    // 频道列表有焦点：菜单键 = 收藏/取消收藏当前焦点频道
+                    if (binding.channelList.hasFocus()) {
+                        toggleFavoriteFocused()
+                        true
+                    } else {
+                        super.onKeyDown(keyCode, event)
+                    }
                 }
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                     // 频道列表有焦点：OK 立即播放焦点频道并关闭列表（已实时预览则直接关闭）
@@ -3111,6 +3256,11 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             }
             KeyEvent.KEYCODE_MENU -> {
                 showSettingsPanel(); true
+            }
+            // 收藏键：遥控器上的「信息/收藏」键直接收藏当前播放的频道
+            // （播放界面控制条已隐藏，这是全屏态下唯一的一键收藏入口）
+            KeyEvent.KEYCODE_INFO, KeyEvent.KEYCODE_BOOKMARK -> {
+                toggleFavoriteCurrent(); true
             }
             KeyEvent.KEYCODE_CHANNEL_UP, KeyEvent.KEYCODE_MEDIA_NEXT -> {
                 switchChannel(1); true

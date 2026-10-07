@@ -43,6 +43,9 @@
     <string name="prev_channel">上一个频道</string>
     <string name="next_channel">下一个频道</string>
     <string name="clear_favorites">清除收藏</string>
+    <string name="favorite_toggle">收藏/取消收藏当前频道</string>
+    <string name="favorite_added">已收藏：%1$s</string>
+    <string name="favorite_removed">已取消收藏：%1$s</string>
     <string name="import_local_file">本地文件导入（支持 .m3u / .m3u8 / .txt）</string>
     <string name="choose_file">选择文件</string>
     <string name="direct_stream">直播流链接直接播放</string>

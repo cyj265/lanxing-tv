@@ -388,6 +388,17 @@
                 android:imeOptions="actionSearch"
                 android:inputType="text" />
 
+            <!-- 收藏/取消收藏：对当前焦点（或正在播放）的频道生效 -->
+            <ImageButton
+                android:id="@+id/btnFavoriteFocused"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:contentDescription="@string/favorite_toggle"
+                android:background="@drawable/bg_control"
+                android:src="@drawable/ic_star"
+                android:padding="10dp"
+                android:scaleType="centerInside" />
+
             <ImageButton
                 android:id="@+id/btnFavorites"
                 android:layout_width="48dp"
