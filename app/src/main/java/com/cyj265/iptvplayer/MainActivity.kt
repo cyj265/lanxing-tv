@@ -1764,12 +1764,54 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         AlertDialog.Builder(this)
             .setTitle(R.string.restore_config)
             .setMessage(R.string.restore_confirm)
-            .setPositiveButton("确定") { _, _ -> openRestoreDoc.launch(arrayOf("application/json", "application/octet-stream", "*/*")) }
+            .setPositiveButton("确定") { _, _ ->
+                try {
+                    openRestoreDoc.launch(arrayOf("application/json", "application/octet-stream", "*/*"))
+                } catch (e: ActivityNotFoundException) {
+                    // TV 盒子无 SAF 文件选择器（N1 等精简 ROM 无 DocumentsUI），
+                    // 降级扫描应用外部目录下的备份 json，避免 ActivityNotFoundException 崩溃
+                    restoreFromExternalDir()
+                }
+            }
             .setNegativeButton("取消", null)
             .show()
     }
 
-    /** 从备份 JSON 恢复全部配置（子线程解析写回，主线程刷新 UI） */
+    /** 降级方案：扫描应用外部目录下的备份 json 文件列表让用户选 */
+    private fun restoreFromExternalDir() {
+        val dir = getExternalFilesDir(null)
+        val files = dir?.listFiles { f -> f.isFile && f.name.endsWith(".json", ignoreCase = true) }
+            ?.sortedByDescending { it.lastModified() } ?: emptyList()
+        if (files.isEmpty()) {
+            Toast.makeText(applicationContext,
+                "未找到备份文件。\n请先使用「备份配置」生成备份，或将备份 json 放到：\n" +
+                    (dir?.absolutePath ?: "/sdcard/Android/data/${packageName}/files/"),
+                Toast.LENGTH_LONG).show()
+            return
+        }
+        val names = files.map { it.name }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("选择要恢复的备份文件")
+            .setItems(names) { _, which ->
+                val f = files[which]
+                Thread {
+                    try {
+                        val text = f.readText(Charsets.UTF_8)
+                        runOnUiThread { restoreFromJson(text) }
+                    } catch (e: Exception) {
+                        runOnUiThread {
+                            Toast.makeText(applicationContext,
+                                getString(R.string.restore_failed, e.message ?: "未知错误"),
+                                Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }.start()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 从 SAF Uri 读取备份并恢复（有系统文件选择器的设备走此路径） */
     private fun restoreFrom(uri: Uri) {
         Thread {
             try {
@@ -1779,6 +1821,21 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                     return@Thread
                 }
                 val text = String(bytes, Charsets.UTF_8)
+                runOnUiThread { restoreFromJson(text) }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(applicationContext,
+                        getString(R.string.restore_failed, e.message ?: "未知错误"),
+                        Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    /** 解析备份 JSON 并写回全部配置（UI 刷新在主线程执行） */
+    private fun restoreFromJson(text: String) {
+        Thread {
+            try {
                 val json = JSONObject(text)
                 if (json.optString("app") != "lanxing-tv") {
                     runOnUiThread { Toast.makeText(applicationContext, R.string.restore_invalid, Toast.LENGTH_LONG).show() }
