@@ -185,26 +185,41 @@
                 android:padding="10dp"
                 android:scaleType="centerInside" />
 
-            <ImageButton
+            <!-- 只看收藏：切换列表筛选（文字按钮，和左边的收藏操作区分开） -->
+            <TextView
                 android:id="@+id/btnFavorites"
-                android:layout_width="48dp"
+                android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:contentDescription="@string/favorites"
-                android:background="?attr/selectableItemBackground"
-                android:src="@drawable/ic_star"
-                android:scaleType="centerInside"
-                android:layout_marginLeft="8dp" />
+                android:layout_marginLeft="8dp"
+                android:background="@drawable/bg_chip"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:minWidth="96dp"
+                android:paddingLeft="14dp"
+                android:paddingRight="14dp"
+                android:text="@string/favorites_only"
+                android:textColor="@color/text_secondary"
+                android:textSize="14sp"
+                android:textStyle="bold" />
 
             <!-- 常驻设置入口：遥控器没有 MENU 键时也能进设置 -->
-            <ImageButton
+            <TextView
                 android:id="@+id/btnPanelSettings"
-                android:layout_width="48dp"
+                android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:contentDescription="@string/settings"
-                android:background="?attr/selectableItemBackground"
-                android:src="@drawable/ic_settings"
-                android:scaleType="centerInside"
-                android:layout_marginLeft="8dp" />
+                android:layout_marginLeft="8dp"
+                android:background="@drawable/bg_chip"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:minWidth="72dp"
+                android:paddingLeft="14dp"
+                android:paddingRight="14dp"
+                android:text="@string/settings"
+                android:textColor="@color/text_primary"
+                android:textSize="14sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <TextView

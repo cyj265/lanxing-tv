@@ -2946,8 +2946,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             if (focusedFav) resources.getColor(R.color.accent, theme)
             else resources.getColor(R.color.text_secondary, theme)
         )
-        binding.btnFavorites.alpha = if (showFavoritesOnly) 1f else 0.45f
-        binding.btnFavorites.setColorFilter(
+        binding.btnFavorites.setTextColor(
             if (showFavoritesOnly) resources.getColor(R.color.accent, theme)
             else resources.getColor(R.color.text_secondary, theme)
         )
@@ -3410,6 +3409,64 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER,
                     KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> {
                         switchToNextSource(); true
+                    }
+                    else -> super.onKeyDown(keyCode, event)
+                }
+            }
+            // 工具条：搜索框与三个按钮之间必须能左右移动，否则遥控器够不到设置
+            val toolbarButtons = listOf(
+                binding.btnFavoriteFocused, binding.btnFavorites, binding.btnPanelSettings
+            )
+            if (binding.searchInput.hasFocus()) {
+                return when (keyCode) {
+                    KeyEvent.KEYCODE_BACK -> {
+                        hideChannelPanel(); true
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        binding.tvSourceBar.requestFocus(); true
+                    }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        binding.channelList.requestFocus(); true
+                    }
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                        // 光标在末尾时右移进入工具按钮，否则继续在文字间移动
+                        if (binding.searchInput.selectionEnd == binding.searchInput.text.length) {
+                            binding.btnFavoriteFocused.requestFocus(); true
+                        } else {
+                            super.onKeyDown(keyCode, event)
+                        }
+                    }
+                    KeyEvent.KEYCODE_DPAD_LEFT -> {
+                        if (binding.searchInput.selectionStart > 0) {
+                            super.onKeyDown(keyCode, event)
+                        } else {
+                            true
+                        }
+                    }
+                    else -> super.onKeyDown(keyCode, event)
+                }
+            }
+            if (toolbarButtons.any { it.hasFocus() }) {
+                return when (keyCode) {
+                    KeyEvent.KEYCODE_BACK -> {
+                        hideChannelPanel(); true
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        binding.tvSourceBar.requestFocus(); true
+                    }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        binding.channelList.requestFocus(); true
+                    }
+                    KeyEvent.KEYCODE_DPAD_LEFT -> {
+                        val i = toolbarButtons.indexOfFirst { it.hasFocus() }
+                        if (i > 0) toolbarButtons[i - 1].requestFocus()
+                        else binding.searchInput.requestFocus()
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                        val i = toolbarButtons.indexOfFirst { it.hasFocus() }
+                        if (i in 0 until toolbarButtons.lastIndex) toolbarButtons[i + 1].requestFocus()
+                        true
                     }
                     else -> super.onKeyDown(keyCode, event)
                 }

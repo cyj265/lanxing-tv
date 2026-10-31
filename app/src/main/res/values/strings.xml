@@ -31,6 +31,7 @@
     <!-- 搜索/收藏/列表 -->
     <string name="search_hint">搜索频道…</string>
     <string name="favorites">收藏</string>
+    <string name="favorites_only">只看收藏</string>
     <string name="all_channels">全部频道</string>
     <string name="now">现在</string>
     <string name="next">下一个</string>
