@@ -281,6 +281,21 @@ class PlaybackManager(
         // 修复：currentSources 为空时不调用 play(name, name)——name 是频道名不是 URL，
         // 必然播放失败。此时只重建播放器即可，等用户下次选台时再播。
     }
+    /** 只应用解码方式并重建播放器，不续播当前频道（恢复备份时用）。 */
+    fun applyDecoderModeSilently(mode: String) {
+        if (mode !in setOf("auto", "hardware", "software")) return
+        if (mode == decoderMode) return
+        decoderMode = mode
+        context.getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
+            .edit().putString("decoder_mode", mode).apply()
+        val pv = playerView ?: return
+        player?.removeListener(playerListener)
+        player?.release()
+        pv.player = null
+        player = buildPlayer()
+        pv.player = player
+        player?.addListener(playerListener)
+    }
     fun currentDecoderMode(): String = decoderMode
     /**
      * 硬解解码器初始化/解码失败时，把播放器重建为软件解码模式续播（影视仓同款兜底）。

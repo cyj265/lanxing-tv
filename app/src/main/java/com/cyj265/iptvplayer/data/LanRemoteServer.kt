@@ -17,10 +17,30 @@ import fi.iki.elonen.NanoHTTPD
 class LanRemoteServer(
     private val onSave: (sources: List<String>, epgUrl: String?) -> Unit,
     private val onPlayDirect: (String) -> Unit,
-    private val getStateJson: () -> String
+    private val getStateJson: () -> String,
+    private val token: String
 ) : NanoHTTPD(19090) {
 
+    /** 访问令牌：只有扫过 App 内二维码（URL 带 ?k=令牌）的设备才能操作。 */
+    private fun authorized(session: IHTTPSession): Boolean {
+        return session.parms["k"] == token
+    }
+
     override fun serve(session: IHTTPSession): Response {
+        if (!authorized(session)) {
+            return newFixedLengthResponse(
+                Response.Status.FORBIDDEN, "text/html; charset=utf-8",
+                """
+                <!DOCTYPE html><html><head><meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <title>揽星 TV · 管理</title>
+                <style>body{background:#0e1116;color:#e8ecf2;font-family:sans-serif;text-align:center;margin-top:80px;padding:0 24px}</style>
+                </head><body><h2>无权访问</h2>
+                <p>请回到机顶盒，在设置里打开“扫码管理”用手机扫描二维码访问。</p>
+                </body></html>
+                """.trimIndent()
+            )
+        }
         return try {
             when (session.uri) {
                 "/", "" -> newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", pageHtml)
@@ -93,7 +113,7 @@ class LanRemoteServer(
         a{color:#7cb0ff}
         </style></head><body>
         <div class="box"><div class="ok">$msg</div>
-        <p><a href="/">返回管理页</a></p></div>
+        <p><a href="/?k=$token">返回管理页</a></p></div>
         </body></html>
     """.trimIndent()
 
@@ -144,8 +164,9 @@ class LanRemoteServer(
 
         <div id="toast"></div>
         <script>
+        var K='$token';
         function loadState(){
-          fetch('/api/state').then(r=>r.json()).then(d=>{
+          fetch('/api/state?k='+K).then(r=>r.json()).then(d=>{
             var src = d.sources || [];
             var txt = '直播源：' + src.length + ' 个' + (src.length? '（当前第 ' + (d.active+1) + ' 个）':'');
             txt += '\n' + src.map((s,i)=>(i===d.active?'▸ ':'  ')+s).join('\n');
@@ -163,14 +184,14 @@ class LanRemoteServer(
           var fd=new FormData();
           fd.append('sources', document.getElementById('sources').value);
           fd.append('epg', document.getElementById('epg').value);
-          fetch('/api/save',{method:'POST',body:fd}).then(r=>r.text()).then(t=>{
+          fetch('/api/save?k='+K,{method:'POST',body:fd}).then(r=>r.text()).then(t=>{
             document.open();document.write(t);document.close();
           }).catch(()=>toast('保存失败'));
         }
         function play(){
           var fd=new FormData();
           fd.append('url', document.getElementById('direct').value);
-          fetch('/api/play',{method:'POST',body:fd}).then(r=>r.text()).then(t=>{
+          fetch('/api/play?k='+K,{method:'POST',body:fd}).then(r=>r.text()).then(t=>{
             document.open();document.write(t);document.close();
           }).catch(()=>toast('请求失败'));
         }

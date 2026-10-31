@@ -120,220 +120,6 @@
             android:text="" />
     </LinearLayout>
 
-    <!-- ===== 底部：控制条（已取消，播放界面用遥控器上下换台/左右换线路/OK频道列表/菜单设置） ===== -->
-    <LinearLayout
-        android:id="@+id/controlBar"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom"
-        android:visibility="gone"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:background="@color/bg_overlay"
-        android:paddingLeft="14dp"
-        android:paddingRight="14dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="10dp">
-
-        <LinearLayout
-            android:id="@+id/btnList"
-            android:layout_width="72dp"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:focusable="true"
-            android:clickable="true"
-            android:background="@drawable/bg_control"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp">
-
-            <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:contentDescription="@string/channel_list"
-                android:src="@drawable/ic_list"
-                android:scaleType="centerInside" />
-
-            <TextView
-                android:id="@+id/tvBtnList"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
-                android:text="频道"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"
-                android:shadowColor="#99000000"
-                android:shadowRadius="3"
-                android:textSize="13sp"
-                android:singleLine="true" />
-        </LinearLayout>
-        <LinearLayout
-            android:id="@+id/btnSwitchLine"
-            android:layout_width="88dp"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:focusable="true"
-            android:clickable="true"
-            android:background="@drawable/bg_control"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp"
-            android:layout_marginLeft="16dp">
-
-            <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:contentDescription="@string/channel_list"
-                android:src="@drawable/ic_switch_line"
-                android:scaleType="centerInside" />
-
-            <TextView
-                android:id="@+id/tvBtnSwitchLine"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
-                android:text="线路"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"
-                android:shadowColor="#99000000"
-                android:shadowRadius="3"
-                android:textSize="13sp"
-                android:singleLine="true" />
-        </LinearLayout>
-        <LinearLayout
-            android:id="@+id/btnPrev"
-            android:layout_width="72dp"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:focusable="true"
-            android:clickable="true"
-            android:background="@drawable/bg_control"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp"
-            android:layout_marginLeft="16dp">
-
-            <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:contentDescription="@string/channel_list"
-                android:src="@drawable/ic_prev"
-                android:scaleType="centerInside" />
-
-            <TextView
-                android:id="@+id/tvBtnPrev"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
-                android:text="上一个"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"
-                android:shadowColor="#99000000"
-                android:shadowRadius="3"
-                android:textSize="13sp"
-                android:singleLine="true" />
-        </LinearLayout>
-        <LinearLayout
-            android:id="@+id/btnNext"
-            android:layout_width="72dp"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:focusable="true"
-            android:clickable="true"
-            android:background="@drawable/bg_control"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp"
-            android:layout_marginLeft="16dp">
-
-            <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:contentDescription="@string/channel_list"
-                android:src="@drawable/ic_next"
-                android:scaleType="centerInside" />
-
-            <TextView
-                android:id="@+id/tvBtnNext"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
-                android:text="下一个"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"
-                android:shadowColor="#99000000"
-                android:shadowRadius="3"
-                android:textSize="13sp"
-                android:singleLine="true" />
-        </LinearLayout>
-        <LinearLayout
-            android:id="@+id/btnFavoriteCurrent"
-            android:layout_width="72dp"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:focusable="true"
-            android:clickable="true"
-            android:background="@drawable/bg_control"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp"
-            android:layout_marginLeft="16dp">
-
-            <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:contentDescription="@string/channel_list"
-                android:src="@drawable/ic_star"
-                android:scaleType="centerInside" />
-
-            <TextView
-                android:id="@+id/tvBtnFavoriteCurrent"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
-                android:text="收藏"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"
-                android:shadowColor="#99000000"
-                android:shadowRadius="3"
-                android:textSize="13sp"
-                android:singleLine="true" />
-        </LinearLayout>
-        <LinearLayout
-            android:id="@+id/btnSettings"
-            android:layout_width="72dp"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:focusable="true"
-            android:clickable="true"
-            android:background="@drawable/bg_control"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp"
-            android:layout_marginLeft="16dp">
-
-            <ImageView
-                android:layout_width="28dp"
-                android:layout_height="28dp"
-                android:contentDescription="@string/channel_list"
-                android:src="@drawable/ic_settings"
-                android:scaleType="centerInside" />
-
-            <TextView
-                android:id="@+id/tvBtnSettings"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
-                android:text="设置"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold"
-                android:shadowColor="#99000000"
-                android:shadowRadius="3"
-                android:textSize="13sp"
-                android:singleLine="true" />
-        </LinearLayout>
-    </LinearLayout>
-
     <!-- ===== 左侧：频道列表悬浮层（OK 唤出，默认隐藏） ===== -->
     <LinearLayout
         android:id="@+id/channelPanel"
@@ -406,6 +192,17 @@
                 android:contentDescription="@string/favorites"
                 android:background="?attr/selectableItemBackground"
                 android:src="@drawable/ic_star"
+                android:scaleType="centerInside"
+                android:layout_marginLeft="8dp" />
+
+            <!-- 常驻设置入口：遥控器没有 MENU 键时也能进设置 -->
+            <ImageButton
+                android:id="@+id/btnPanelSettings"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:contentDescription="@string/settings"
+                android:background="?attr/selectableItemBackground"
+                android:src="@drawable/ic_settings"
                 android:scaleType="centerInside"
                 android:layout_marginLeft="8dp" />
         </LinearLayout>

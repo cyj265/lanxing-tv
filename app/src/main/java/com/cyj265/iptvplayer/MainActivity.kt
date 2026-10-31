@@ -187,8 +187,30 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             }
         }
 
+    /** 开启「开机自启」时顺带申请通知权限（Android 13+ 开机通知兜底需要） */
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return
+        try {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) {
+                notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            }
+        } catch (ignored: Throwable) {
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 清掉开机时的提醒通知（应用已被用户打开）
+        try {
+            (getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager)
+                .cancel(BootReceiver.NOTIFICATION_ID)
+        } catch (ignored: Throwable) {
+        }
         installCrashHandler()
         try {
             initApp()
@@ -585,7 +607,6 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         updateSourceStatus()
         refreshCrashLog()
         updateSourceOptions()
-        updateLineupLabel()
         updateTimeoutSelection()
         updateDecoderSelection()
         updateAspectRatioSelection()
@@ -614,9 +635,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     }
 
     private fun setupButtons() {
-        binding.btnSettings.setOnClickListener { showSettingsPanel() }
-        binding.btnList.setOnClickListener { showChannelPanel() }
-        binding.btnSwitchLine.setOnClickListener { switchToNextLine() }
+        binding.btnPanelSettings.setOnClickListener { showSettingsPanel() }
         binding.btnFavorites.setOnClickListener {
             showFavoritesOnly = !showFavoritesOnly
             applyFilter()
@@ -624,9 +643,6 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 if (showFavoritesOnly) getString(R.string.favorites) else getString(R.string.channel_list)
             updateFavoriteIcon()
         }
-        binding.btnPrev.setOnClickListener { switchChannel(-1) }
-        binding.btnNext.setOnClickListener { switchChannel(1) }
-        binding.btnFavoriteCurrent.setOnClickListener { toggleFavoriteCurrent() }
         // 频道列表工具条：对当前焦点频道（无焦点时为正在播放频道）收藏/取消收藏
         binding.btnFavoriteFocused.setOnClickListener { toggleFavoriteFocused() }
     }
@@ -640,7 +656,6 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             Toast.makeText(applicationContext, "当前频道只有 1 条线路", Toast.LENGTH_SHORT).show()
             return
         }
-        updateLineupLabel()
         updateNowPlaying()
     }
 
@@ -651,21 +666,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             Toast.makeText(applicationContext, "当前频道只有 1 条线路", Toast.LENGTH_SHORT).show()
             return
         }
-        updateLineupLabel()
         updateNowPlaying()
-    }
-
-    private fun updateLineupLabel() {
-        try {
-            val count = playback.sourceCount()
-            binding.tvBtnSwitchLine.text =
-                if (count > 1) {
-                    getString(R.string.line_fmt, playback.currentSourceIndex() + 1, count)
-                } else {
-                    "线路 1/1"
-                }
-        } catch (ignored: Throwable) {
-        }
     }
 
     // ---------- 直播源切换条（频道列表顶部） ----------
@@ -830,6 +831,17 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
 
     // ---------- 扫码局域网管理 ----------
 
+    /** 局域网管理页访问令牌：首次生成后固定，二维码里带上它，同网未扫码的设备无法操作。 */
+    private fun lanToken(): String {
+        val sp = getSharedPreferences("settings", MODE_PRIVATE)
+        var t = sp.getString("lan_token", null)
+        if (t.isNullOrEmpty()) {
+            t = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 10)
+            sp.edit().putString("lan_token", t).apply()
+        }
+        return t
+    }
+
     private fun startRemoteServer() {
         remoteServer = LanRemoteServer(
             onSave = { sources, epg -> handleRemoteSave(sources, epg) },
@@ -841,7 +853,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                     }
                 }
             },
-            getStateJson = { stateJson() }
+            getStateJson = { stateJson() },
+            token = lanToken()
         )
         try {
             remoteServer?.start()
@@ -1032,7 +1045,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             Toast.makeText(applicationContext, R.string.scan_server_off, Toast.LENGTH_LONG).show()
             return
         }
-        val url = "http://$ip:19090/"
+        val url = "http://$ip:19090/?k=${lanToken()}"
         val qr: Bitmap? = try {
             QrCodeUtil.encode(url, 640)
         } catch (e: Throwable) {
@@ -1459,6 +1472,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         binding.chkAutoBoot.isChecked = repository.autoBoot
         binding.chkAutoBoot.setOnCheckedChangeListener { _, checked ->
             repository.autoBoot = checked
+            if (checked) requestNotificationPermissionIfNeeded()
             Toast.makeText(applicationContext, if (checked) "开机自启动已开启" else "开机自启动已关闭", Toast.LENGTH_SHORT).show()
         }
 
@@ -1717,7 +1731,16 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         prefs.put("epgEnabled", repository.epgEnabled)
         prefs.put("epgRefreshHours", repository.epgRefreshHours)
         prefs.put("autoSelectFastest", repository.autoSelectFastest)
+        // 解码方式是盒子上最常调的设置，也要跟着走
+        prefs.put("decoderMode", playback.currentDecoderMode())
+        prefs.put("autoUpdateCheck", autoUpdateCheck)
+        prefs.put("rememberGroup", rememberGroupPrefs().getBoolean("remember_group", false))
+        rememberGroupPrefs().getString("last_group", null)?.let { prefs.put("lastGroup", it) }
         json.put("prefs", prefs)
+        json.put("lastChannelId", repository.lastChannelId ?: "")
+        val collapsedArr = JSONArray()
+        repository.getCollapsedGroups().forEach { collapsedArr.put(it) }
+        json.put("collapsedGroups", collapsedArr)
         return json
     }
 
@@ -1872,6 +1895,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 repository.setFavorites(favs)
 
                 // 偏好
+                var restoredDecoderMode: String? = null
                 val prefs = json.optJSONObject("prefs")
                 if (prefs != null) {
                     prefs.optString("aspectRatio").takeIf { it.isNotEmpty() }?.let { repository.aspectRatio = it }
@@ -1887,12 +1911,41 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                     prefs.optString("epgEnabled").takeIf { it.isNotEmpty() }?.let { repository.epgEnabled = it.toBoolean() }
                     prefs.optString("epgRefreshHours").takeIf { it.isNotEmpty() }?.let { repository.epgRefreshHours = it.toInt() }
                     prefs.optString("autoSelectFastest").takeIf { it.isNotEmpty() }?.let { repository.autoSelectFastest = it.toBoolean() }
+                    // 解码方式：只记录，等回主线程再重建播放器
+                    prefs.optString("decoderMode").takeIf { it in decoderModeCycle }?.let { restoredDecoderMode = it }
+                    prefs.optString("autoUpdateCheck").takeIf { it.isNotEmpty() }?.let {
+                        autoUpdateCheck = it.toBoolean()
+                        getSharedPreferences("settings", MODE_PRIVATE).edit()
+                            .putBoolean("auto_update_check", autoUpdateCheck).apply()
+                    }
+                    prefs.optString("rememberGroup").takeIf { it.isNotEmpty() }?.let {
+                        rememberGroupPrefs().edit().putBoolean("remember_group", it.toBoolean()).apply()
+                    }
+                    prefs.optString("lastGroup").takeIf { it.isNotEmpty() }?.let {
+                        rememberGroupPrefs().edit().putString("last_group", it).apply()
+                    }
+                }
+
+                // 分组折叠状态 / 上次频道（旧备份没有这两项时保持现状）
+                json.optJSONArray("collapsedGroups")?.let { arr ->
+                    val collapsed = mutableSetOf<String>()
+                    for (i in 0 until arr.length()) collapsed.add(arr.getString(i))
+                    repository.saveCollapsedGroups(collapsed)
+                }
+                json.optString("lastChannelId").takeIf { it.isNotEmpty() }?.let {
+                    repository.lastChannelId = it
                 }
 
                 runOnUiThread {
                     try {
                         // 刷新全部相关 UI
                         adapter.favorites = favorites
+                        restoredDecoderMode?.let { playback.applyDecoderModeSilently(it) }
+                        updateDecoderSelection()
+                        binding.switchAutoUpdate.isChecked = autoUpdateCheck
+                        binding.chkRememberGroup.isChecked =
+                            rememberGroupPrefs().getBoolean("remember_group", false)
+                        adapter.setCollapsedGroups(repository.getCollapsedGroups())
                         updateFavCount()
                         refreshSourceUI()
                         refreshSettingsSourceInput()
@@ -2024,6 +2077,31 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             append("\n\n是否立即更新？")
         }
 
+    /**
+     * 拉取最新 Release JSON：先直连 GitHub API，失败后自动走 gh-proxy 加速线路。
+     * 国内网络直连 api.github.com 经常超时/被重置，只靠直连会永远检测不到更新。
+     */
+    private fun fetchLatestReleaseJson(connectTimeoutMs: Int = 10000, readTimeoutMs: Int = 10000): JSONObject {
+        val directUrl = "https://api.github.com/repos/cyj265/lanxing-tv/releases/latest"
+        val urls = listOf(directUrl, "https://gh-proxy.com/$directUrl")
+        var lastError: Exception? = null
+        for (url in urls) {
+            try {
+                val conn = URL(url).openConnection() as HttpURLConnection
+                conn.connectTimeout = connectTimeoutMs
+                conn.readTimeout = readTimeoutMs
+                conn.setRequestProperty("User-Agent", "LanXingTV")
+                conn.setRequestProperty("Accept", "application/vnd.github+json")
+                val code = conn.responseCode
+                if (code !in 200..299) throw Exception("HTTP $code")
+                return JSONObject(conn.inputStream.bufferedReader().readText())
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+        throw lastError ?: Exception("网络错误")
+    }
+
     private fun checkUpdateSilent() {
         // 本地节流：12 小时内只自动检查一次。GitHub 未认证 API 限流 60 次/小时/IP，
         // 公开用户在同一出口 IP 下频繁启动会触发 403，这里先自己降频。
@@ -2037,13 +2115,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         }
         Thread {
             try {
-                val conn = URL(
-                    "https://api.github.com/repos/cyj265/lanxing-tv/releases/latest"
-                ).openConnection() as HttpURLConnection
-                conn.connectTimeout = 10000
-                conn.readTimeout = 10000
-                conn.setRequestProperty("User-Agent", "LanXingTV")
-                val json = JSONObject(conn.inputStream.bufferedReader().readText())
+                val json = fetchLatestReleaseJson()
                 val tag = json.getString("tag_name").removePrefix("v")
                 val assets = json.getJSONArray("assets")
                 var apkUrl: String? = null
@@ -2086,13 +2158,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         binding.tvUpdateStatus.text = getString(R.string.checking_update)
         Thread {
             try {
-                val conn = URL(
-                    "https://api.github.com/repos/cyj265/lanxing-tv/releases/latest"
-                ).openConnection() as HttpURLConnection
-                conn.connectTimeout = 15000
-                conn.readTimeout = 15000
-                conn.setRequestProperty("User-Agent", "LanXingTV")
-                val json = JSONObject(conn.inputStream.bufferedReader().readText())
+                val json = fetchLatestReleaseJson(15000, 15000)
                 val tag = json.getString("tag_name").removePrefix("v")
                 val assets = json.getJSONArray("assets")
                 var apkUrl: String? = null
@@ -2600,7 +2666,6 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         updateProgramInfo()
         playback.play(channel.sources.ifEmpty { listOf(channel.url) }, channel.name)
         updateNowPlaying()
-        updateLineupLabel()
         hideChannelPanel()
     }
 
@@ -2719,7 +2784,6 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         adapter.setSelected(ch.id)
         playback.play(ch.sources.ifEmpty { listOf(ch.url) }, ch.name)
         updateNowPlaying()
-        updateLineupLabel()
         logStartup("resumeLastChannel: playback.play() called")
     }
 
@@ -2737,7 +2801,6 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         adapter.setSelected(null)
         playback.play(listOf(url), name)
         updateNowPlaying()
-        updateLineupLabel()
     }
 
     /**
@@ -2875,7 +2938,6 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     }
 
     private fun updateFavoriteIcon() {
-        binding.btnFavoriteCurrent.alpha = if (currentChannel?.let { favorites.contains(it.url) } == true) 1f else 0.4f
         val focused = lastFocusedChannel ?: currentChannel
         val focusedFav = focused?.let { favorites.contains(it.url) } == true
         // 已收藏：高亮金色 + 不透明；未收藏：灰色半透明
@@ -3391,13 +3453,18 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                     true
                 }
                 KeyEvent.KEYCODE_MENU -> {
-                    // 频道列表有焦点：菜单键 = 收藏/取消收藏当前焦点频道
+                    // 频道列表有焦点：菜单键 = 收藏/取消收藏当前焦点频道；
+                    // 焦点在分组/来源栏时：进入设置（无设置按钮的遥控器也能用）
                     if (binding.channelList.hasFocus()) {
                         toggleFavoriteFocused()
-                        true
                     } else {
-                        super.onKeyDown(keyCode, event)
+                        showSettingsPanel()
                     }
+                    true
+                }
+                // 部分遥控器把设置键映射成 KEYCODE_SETTINGS
+                KeyEvent.KEYCODE_SETTINGS -> {
+                    showSettingsPanel(); true
                 }
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                     // 频道列表有焦点：OK 立即播放焦点频道并关闭列表（已实时预览则直接关闭）
@@ -3410,7 +3477,6 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                                 adapter.setSelected(ch.id)
                                 playback.play(ch.sources.ifEmpty { listOf(ch.url) }, ch.name)
                                 updateNowPlaying()
-                                updateLineupLabel()
                             }
                         }
                         hideChannelPanel()
@@ -3442,7 +3508,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                 showChannelPanel(); true
             }
-            KeyEvent.KEYCODE_MENU -> {
+            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_SETTINGS -> {
                 showSettingsPanel(); true
             }
             // 收藏键：遥控器上的「信息/收藏」键直接收藏当前播放的频道
