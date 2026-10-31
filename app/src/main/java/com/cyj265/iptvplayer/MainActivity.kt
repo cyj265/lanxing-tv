@@ -19,6 +19,7 @@ import android.util.Log
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -164,12 +165,20 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
 
     private val createBackupDoc =
         registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
-            uri?.let { writeBackupTo(it) }
+            if (uri != null) {
+                writeBackupTo(uri)
+            } else {
+                Toast.makeText(applicationContext, "未另存到其他位置（备份仍在应用目录）", Toast.LENGTH_SHORT).show()
+            }
         }
 
     private val openRestoreDoc =
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-            uri?.let { restoreFrom(it) }
+            if (uri != null) {
+                restoreFrom(uri)
+            } else {
+                Toast.makeText(applicationContext, "已取消恢复", Toast.LENGTH_SHORT).show()
+            }
         }
 
     /** 等待授权「安装未知应用」期间暂存的安装包 */
@@ -613,6 +622,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         // 焦点默认落在导航列当前项（上下键切换分区）；延迟到面板布局完成后，
         // 避免 updateSourceOptions() 重建直播源列表导致焦点被抢进二级菜单。
         val navs = settingsNavs()
+        // 上次停在「退出」分区时，下次打开回到第一个分区（避免一进设置就落在退出项上）
+        if (currentSettingsTab == navs.lastIndex) selectSettingsTab(0)
         val navIdx = currentSettingsTab.coerceIn(0, navs.size - 1)
         binding.settingsPanel.post { navs[navIdx].requestFocus() }
     }
@@ -1164,13 +1175,16 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 if (view.id in optionViewIds) return  // 展开式选项单独处理（失焦恢复选中状态）
                 if (!view.isFocusable) return
                 val normalTextColor = view.currentTextColor
+                // 记住原背景（按钮的 backgroundTint、输入行的 bg_search 等），
+                // 失焦要还原成原样，否则按钮被焦点“扫”过一次就变成没有底色的纯文字
+                val normalBackground = view.background
                 view.onFocusChangeListener = View.OnFocusChangeListener { _, focused ->
                     if (focused) {
                         view.setBackgroundResource(R.drawable.bg_item_focused)
                         view.setTextColor(0xFFFFFFFF.toInt())
                         view.setTypeface(view.typeface, Typeface.BOLD)
                     } else {
-                        view.setBackgroundResource(0)
+                        view.background = normalBackground
                         view.setTextColor(normalTextColor)
                         view.setTypeface(view.typeface, Typeface.NORMAL)
                     }
@@ -1218,12 +1232,15 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     )
 
     private fun selectSettingsTab(index: Int, focusDetail: Boolean = false) {
+        val changed = index != currentSettingsTab
         currentSettingsTab = index
         val navs = settingsNavs()
         val sections = settingsSections()
         sections.forEachIndexed { i, s ->
             s.visibility = if (i == index) View.VISIBLE else View.GONE
         }
+        // 换分区时回到顶部，否则会停在上一分区的滚动位置，像内容缺了一截
+        if (changed) binding.settingsScroll.scrollTo(0, 0)
         navs.forEachIndexed { i, n ->
             if (i == index) {
                 n.setBackgroundResource(R.drawable.bg_nav_item_selected)
@@ -1240,59 +1257,51 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         if (focusDetail) focusValueInSettingsSection(index)
     }
 
-    /** 切 tab 后把焦点定位到当前选中值（展开式分区）。 */
+    /** 切 tab 后把焦点定位到当前选中值（展开式分区）。
+     *  延迟到下一次布局再请求焦点：刚由 GONE 变 VISIBLE 的分区里控件还没测量，
+     *  立刻 requestFocus 会失败，表现为右键偶尔没反应。 */
     private fun focusValueInSettingsSection(index: Int) {
-        try {
-            when (index) {
-                1 -> { // 节目单：定位到地址行
-                    binding.tvEpgUrl.requestFocus()
+        val safeIndex = index.coerceIn(0, settingsSections().size - 1)
+        binding.settingsPanel.post {
+            try {
+                val target: View? = when (safeIndex) {
+                    1 -> binding.tvEpgUrl
+                    2 -> binding.root.findViewById(
+                        when (repository.aspectRatio) {
+                            "16:9" -> R.id.ratio169
+                            "4:3" -> R.id.ratio43
+                            "zoom" -> R.id.ratiozoom
+                            "fill" -> R.id.ratiofill
+                            else -> R.id.ratiofit
+                        }
+                    )
+                    3 -> binding.root.findViewById(
+                        when (playback.currentDecoderMode()) {
+                            "hardware" -> R.id.decoderHard
+                            "software" -> R.id.decoderSoft
+                            else -> R.id.decoderAuto
+                        }
+                    )
+                    4 -> binding.root.findViewById(
+                        when (repository.switchTimeoutSec) {
+                            5 -> R.id.timeout5
+                            10 -> R.id.timeout10
+                            15 -> R.id.timeout15
+                            20 -> R.id.timeout20
+                            25 -> R.id.timeout25
+                            30 -> R.id.timeout30
+                            else -> R.id.timeout60
+                        }
+                    )
+                    7 -> binding.btnClearCrashLog
+                    else -> firstFocusableChild(settingsSections()[safeIndex])
                 }
-                2 -> { // 画面比例
-                    val id = when (repository.aspectRatio) {
-                        "16:9" -> R.id.ratio169
-                        "4:3" -> R.id.ratio43
-                        "zoom" -> R.id.ratiozoom
-                        "fill" -> R.id.ratiofill
-                        else -> R.id.ratiofit
-                    }
-                    binding.root.findViewById<View>(id)?.requestFocus()
-                }
-                3 -> { // 播放解码
-                    val id = when (playback.currentDecoderMode()) {
-                        "hardware" -> R.id.decoderHard
-                        "software" -> R.id.decoderSoft
-                        else -> R.id.decoderAuto
-                    }
-                    binding.root.findViewById<View>(id)?.requestFocus()
-                }
-                4 -> { // 超时换源
-                    val id = when (repository.switchTimeoutSec) {
-                        5 -> R.id.timeout5
-                        10 -> R.id.timeout10
-                        15 -> R.id.timeout15
-                        20 -> R.id.timeout20
-                        25 -> R.id.timeout25
-                        30 -> R.id.timeout30
-                        else -> R.id.timeout60
-                    }
-                    binding.root.findViewById<View>(id)?.requestFocus()
-                }
-                7 -> { // 调试：定位到清空日志
-                    binding.btnClearCrashLog.requestFocus()
-                }
-                else -> {
-                    val section = settingsSections()[index.coerceIn(0, settingsSections().size - 1)]
-                    val target = firstFocusableChild(section)
-                    if (target != null) {
-                        target.requestFocus()
-                    } else {
-                        // 详情区无可聚焦项：回退到导航列，避免焦点丢失
-                        val navs = settingsNavs()
-                        navs[index.coerceIn(0, navs.size - 1)].requestFocus()
-                    }
-                }
+                if (target != null && target.isShown && target.requestFocus()) return@post
+                // 详情区无可聚焦项：回退到导航列，避免焦点丢失
+                val navs = settingsNavs()
+                navs[safeIndex.coerceIn(0, navs.size - 1)].requestFocus()
+            } catch (ignored: Throwable) {
             }
-        } catch (ignored: Throwable) {
         }
     }
 
@@ -1747,26 +1756,52 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     private fun launchBackup() {
         val name = "lanxing-config-" +
             SimpleDateFormat("yyyyMMdd-HHmmss", Locale.getDefault()).format(Date()) + ".json"
-        try {
-            createBackupDoc.launch(name)
-        } catch (e: ActivityNotFoundException) {
-            // TV 设备无文件管理器，降级直接写入应用外部目录
-            writeBackupToExternal(name)
-        } catch (e: Exception) {
-            Toast.makeText(applicationContext, "无法打开保存窗口：${e.message}", Toast.LENGTH_LONG).show()
-        }
+        // 先保证写进应用目录再提示：电视盒子经常没有可用的系统文件选择器，
+        // 之前直接拉起保存窗口，在盒子上表现为「点了没反应」，恢复时自然也找不到文件。
+        val saved = saveBackupToAppDir(name) ?: return
+        AlertDialog.Builder(this)
+            .setTitle("备份完成")
+            .setMessage(
+                "已保存到：\n${saved.absolutePath}\n\n" +
+                    "恢复时点「恢复配置」，直接在列表里选这份备份。\n" +
+                    "注意：卸载应用会一并删除此文件。"
+            )
+            .setPositiveButton("完成", null)
+            .setNeutralButton("另存到其他位置") { _, _ ->
+                try {
+                    createBackupDoc.launch(name)
+                } catch (e: ActivityNotFoundException) {
+                    Toast.makeText(applicationContext, "此设备没有可用的文件选择器，备份仍在应用目录", Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    Toast.makeText(applicationContext, "无法打开保存窗口：${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+            .show()
     }
 
-    /** 降级方案：直接写入应用外部文件目录（无需权限，文件管理器可访问） */
-    private fun writeBackupToExternal(name: String) {
-        try {
-            val dir = getExternalFilesDir(null) ?: filesDir
-            val outFile = java.io.File(dir, name)
-            outFile.writeText(buildBackupJson().toString(2), Charsets.UTF_8)
-            Toast.makeText(applicationContext, "已备份到：${outFile.absolutePath}", Toast.LENGTH_LONG).show()
-        } catch (e: Exception) {
-            Toast.makeText(applicationContext, getString(R.string.backup_failed, e.message ?: "未知错误"), Toast.LENGTH_LONG).show()
+    /** 写入应用外部目录，失败时退回内部目录，返回写入的文件。 */
+    private fun saveBackupToAppDir(name: String): File? {
+        // 部分盒子的 /storage/emulated 写入会直接返回 ENOSPC，
+        // 但 /data 正常，所以外部目录失败必须再试内部目录。
+        val text = buildBackupJson().toString(2)
+        val dirs = listOfNotNull(getExternalFilesDir(null), filesDir).distinct()
+        var lastError: Exception? = null
+        dirs.forEach { dir ->
+            val outFile = File(dir, name)
+            try {
+                outFile.writeText(text, Charsets.UTF_8)
+                return outFile
+            } catch (e: Exception) {
+                lastError = e
+                outFile.delete()
+            }
         }
+        Toast.makeText(
+            applicationContext,
+            getString(R.string.backup_failed, lastError?.message ?: "未知错误"),
+            Toast.LENGTH_LONG
+        ).show()
+        return null
     }
 
     private fun writeBackupTo(uri: Uri) {
@@ -1777,7 +1812,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 return
             }
             os.use { out -> out.write(buildBackupJson().toString(2).toByteArray(Charsets.UTF_8)) }
-            Toast.makeText(applicationContext, R.string.backup_done, Toast.LENGTH_SHORT).show()
+            Toast.makeText(applicationContext, "已另存到所选位置", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             Toast.makeText(applicationContext, getString(R.string.backup_failed, e.message ?: "未知错误"), Toast.LENGTH_LONG).show()
         }
@@ -1787,51 +1822,77 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         AlertDialog.Builder(this)
             .setTitle(R.string.restore_config)
             .setMessage(R.string.restore_confirm)
-            .setPositiveButton("确定") { _, _ ->
-                try {
-                    openRestoreDoc.launch(arrayOf("application/json", "application/octet-stream", "*/*"))
-                } catch (e: ActivityNotFoundException) {
-                    // TV 盒子无 SAF 文件选择器（N1 等精简 ROM 无 DocumentsUI），
-                    // 降级扫描应用外部目录下的备份 json，避免 ActivityNotFoundException 崩溃
-                    restoreFromExternalDir()
-                }
+            .setPositiveButton("选择备份") { _, _ -> showRestoreFilePicker() }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 应用目录里的备份文件（外部/内部都扫，按时间倒序，跳过写坏的 0 字节文件）。 */
+    private fun listBackupFiles(): List<File> {
+        val dirs = listOfNotNull(getExternalFilesDir(null), filesDir).distinct()
+        return dirs.flatMap { dir ->
+            dir.listFiles { f -> f.isFile && f.name.endsWith(".json", ignoreCase = true) }
+                ?.toList().orEmpty()
+        }.filter { it.length() > 0 }.sortedByDescending { it.lastModified() }
+    }
+
+    /** 先列应用目录里现成的备份（盒子上通常只有这条路可用），再提供系统选择器作为补充。 */
+    private fun showRestoreFilePicker() {
+        val files = listBackupFiles()
+        if (files.isEmpty()) {
+            openSystemRestorePicker("未找到备份文件，请先点「备份配置」生成备份")
+            return
+        }
+        val fmt = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
+        val labels = files.map {
+            "${it.name}（${fmt.format(Date(it.lastModified()))}，${(it.length() + 1023) / 1024} KB）"
+        }
+        // 平台 AlertDialog 是白底，但列表项沿用暗色主题的白色文字，
+        // 不显式改色会变成白底白字、完全看不见。
+        val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, labels) {
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val v = super.getView(position, convertView, parent)
+                (v as TextView).setTextColor(0xFF1B1B1B.toInt())
+                return v
+            }
+        }
+        AlertDialog.Builder(this)
+            .setTitle("选择要恢复的备份")
+            .setAdapter(adapter) { _, which -> restoreFromFile(files[which]) }
+            .setNeutralButton("从其他位置选择") { _, _ ->
+                openSystemRestorePicker("此设备没有可用的文件选择器")
             }
             .setNegativeButton("取消", null)
             .show()
     }
 
-    /** 降级方案：扫描应用外部目录下的备份 json 文件列表让用户选 */
-    private fun restoreFromExternalDir() {
-        val dir = getExternalFilesDir(null)
-        val files = dir?.listFiles { f -> f.isFile && f.name.endsWith(".json", ignoreCase = true) }
-            ?.sortedByDescending { it.lastModified() } ?: emptyList()
-        if (files.isEmpty()) {
-            Toast.makeText(applicationContext,
-                "未找到备份文件。\n请先使用「备份配置」生成备份，或将备份 json 放到：\n" +
-                    (dir?.absolutePath ?: "/sdcard/Android/data/${packageName}/files/"),
-                Toast.LENGTH_LONG).show()
-            return
+    private fun openSystemRestorePicker(emptyHint: String) {
+        try {
+            openRestoreDoc.launch(arrayOf("application/json", "application/octet-stream", "*/*"))
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(applicationContext, emptyHint, Toast.LENGTH_LONG).show()
         }
-        val names = files.map { it.name }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("选择要恢复的备份文件")
-            .setItems(names) { _, which ->
-                val f = files[which]
-                Thread {
-                    try {
-                        val text = f.readText(Charsets.UTF_8)
-                        runOnUiThread { restoreFromJson(text) }
-                    } catch (e: Exception) {
-                        runOnUiThread {
-                            Toast.makeText(applicationContext,
-                                getString(R.string.restore_failed, e.message ?: "未知错误"),
-                                Toast.LENGTH_LONG).show()
-                        }
+    }
+
+    private fun restoreFromFile(f: File) {
+        Thread {
+            try {
+                val text = f.readText(Charsets.UTF_8)
+                if (text.isBlank()) {
+                    runOnUiThread {
+                        Toast.makeText(applicationContext, "这份备份是空文件，请重新点「备份配置」", Toast.LENGTH_LONG).show()
                     }
-                }.start()
+                    return@Thread
+                }
+                runOnUiThread { restoreFromJson(text) }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(applicationContext,
+                        getString(R.string.restore_failed, e.message ?: "未知错误"),
+                        Toast.LENGTH_LONG).show()
+                }
             }
-            .setNegativeButton("取消", null)
-            .show()
+        }.start()
     }
 
     /** 从 SAF Uri 读取备份并恢复（有系统文件选择器的设备走此路径） */
@@ -3370,17 +3431,28 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     // ---------- 遥控器按键 ----------
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        // 设置面板打开：BACK 关闭；左右键在导航列与详情区之间切换焦点
+        // 设置面板打开：返回键逐层退出（详情 → 导航列 → 关闭）；
+        // 菜单/设置键与全屏态打开它的按键对应，直接关闭；OK 从导航列进入详情
         if (isSettingsPanelVisible) {
+            val settingNavs = settingsNavs()
+            val navFocused = settingNavs.any { it.hasFocus() }
+            val detailFocused = settingsSections().any { s -> containsFocus(s) }
             return when (keyCode) {
                 KeyEvent.KEYCODE_BACK -> {
+                    if (detailFocused) {
+                        settingNavs[currentSettingsTab.coerceIn(0, settingNavs.lastIndex)].requestFocus()
+                    } else {
+                        hideSettingsPanel()
+                    }
+                    true
+                }
+                KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_SETTINGS -> {
                     hideSettingsPanel(); true
                 }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
                     // 焦点在导航列 -> 进入详情区并定位到当前值
-                    if (settingsNavs().any { it.hasFocus() }) {
+                    if (navFocused) {
                         focusValueInSettingsSection(currentSettingsTab)
-                        // 如果焦点仍在导航列（详情区无可聚焦项），也算处理完成，避免 super 乱跳
                         true
                     } else {
                         super.onKeyDown(keyCode, event)
@@ -3388,9 +3460,17 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 }
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
                     // 焦点在详情区 -> 回到导航列当前项
-                    if (settingsSections().any { s -> containsFocus(s) }) {
-                        val navs = settingsNavs()
-                        navs[currentSettingsTab.coerceIn(0, navs.size - 1)].requestFocus()
+                    if (detailFocused) {
+                        settingNavs[currentSettingsTab.coerceIn(0, settingNavs.lastIndex)].requestFocus()
+                        true
+                    } else {
+                        super.onKeyDown(keyCode, event)
+                    }
+                }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                    // OK 进详情；「退出」项保持默认点击（弹确认框）
+                    if (navFocused && !binding.navExit.hasFocus()) {
+                        focusValueInSettingsSection(currentSettingsTab)
                         true
                     } else {
                         super.onKeyDown(keyCode, event)
