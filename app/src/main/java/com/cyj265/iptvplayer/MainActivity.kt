@@ -16,13 +16,14 @@ import android.provider.Settings
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
+import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
-import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1120,7 +1121,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     /** 导航列 ID 集合（单独处理选中样式，不应用通用焦点样式） */
     private val navViewIds = setOf(
         R.id.navLineup, R.id.navEpg, R.id.navRatio, R.id.navDecoder, R.id.navTimeout,
-        R.id.navPrefs, R.id.navUpdate, R.id.navDebug, R.id.navAbout, R.id.navExit
+        R.id.navPrefs, R.id.navUpdate, R.id.navDebug, R.id.navBackup, R.id.navAbout, R.id.navExit
     )
 
     /** 展开式选项 ID 集合（单独管理焦点样式，失焦时恢复选中状态） */
@@ -1145,17 +1146,18 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 if (view is android.widget.EditText) return  // 输入框保持原样
                 if (view.id in navViewIds) {
                     // 导航项焦点态：使用选中态 drawable + 白字加粗 + 切换 tab
-                    val navNormalColor = (view as TextView).currentTextColor
                     view.onFocusChangeListener = View.OnFocusChangeListener { _, focused ->
                         if (focused) {
-                            view.setBackgroundResource(R.drawable.bg_nav_item_selected)
-                            view.setTextColor(Color.WHITE)
-                            view.setTypeface(view.typeface, Typeface.BOLD)
-                            // 焦点时自动切换到对应 tab（修复被覆盖导致不能切换的问题）
+                            // 先切分类（selectSettingsTab 会重刷导航样式），再覆盖成焦点态，
+                            // 否则焦点色会被选中态覆盖
                             val navIdx = settingsNavs().indexOf(view)
                             if (navIdx >= 0 && navIdx != currentSettingsTab) {
                                 selectSettingsTab(navIdx)
                             }
+                            // 焦点用实心亮蓝；「已选中但未聚焦」是半透明蓝底
+                            view.setBackgroundResource(R.drawable.bg_item_focused)
+                            view.setTextColor(Color.WHITE)
+                            view.setTypeface(view.typeface, Typeface.BOLD)
                         } else {
                             // 失焦时恢复：如果是当前选中 tab 则保持选中态，否则恢复普通态
                             val navIndex = settingsNavs().indexOf(view)
@@ -1164,7 +1166,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                                 view.setTextColor(Color.WHITE)
                                 view.setTypeface(view.typeface, Typeface.BOLD)
                             } else {
-                                view.setBackgroundResource(0)
+                                view.setBackgroundResource(R.drawable.bg_nav_item)
                                 view.setTextColor(0xFFCCCCCC.toInt())
                                 view.setTypeface(view.typeface, Typeface.NORMAL)
                             }
@@ -1175,16 +1177,20 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 if (view.id in optionViewIds) return  // 展开式选项单独处理（失焦恢复选中状态）
                 if (!view.isFocusable) return
                 val normalTextColor = view.currentTextColor
-                // 记住原背景（按钮的 backgroundTint、输入行的 bg_search 等），
+                // 记住原背景和 tint（按钮的 backgroundTint、输入行的 bg_search 等），
                 // 失焦要还原成原样，否则按钮被焦点“扫”过一次就变成没有底色的纯文字
                 val normalBackground = view.background
+                val normalTint = view.backgroundTintList
                 view.onFocusChangeListener = View.OnFocusChangeListener { _, focused ->
                     if (focused) {
+                        // 不清掉 backgroundTint，焦点蓝底会被按钮的 tint 重新染色，看起来只有字变白
+                        view.backgroundTintList = null
                         view.setBackgroundResource(R.drawable.bg_item_focused)
                         view.setTextColor(0xFFFFFFFF.toInt())
                         view.setTypeface(view.typeface, Typeface.BOLD)
                     } else {
                         view.background = normalBackground
+                        view.backgroundTintList = normalTint
                         view.setTextColor(normalTextColor)
                         view.setTypeface(view.typeface, Typeface.NORMAL)
                     }
@@ -1222,13 +1228,13 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     private fun settingsNavs(): List<View> = listOf(
         binding.navLineup, binding.navEpg, binding.navRatio, binding.navDecoder,
         binding.navTimeout, binding.navPrefs, binding.navUpdate,
-        binding.navDebug, binding.navAbout, binding.navExit
+        binding.navDebug, binding.navBackup, binding.navAbout, binding.navExit
     )
 
     private fun settingsSections(): List<View> = listOf(
         binding.sectionLineup, binding.sectionEpg, binding.sectionRatio, binding.sectionDecoder,
         binding.sectionTimeout, binding.sectionPrefs, binding.sectionUpdate,
-        binding.sectionDebug, binding.sectionAbout, binding.sectionExit
+        binding.sectionDebug, binding.sectionBackup, binding.sectionAbout, binding.sectionExit
     )
 
     private fun selectSettingsTab(index: Int, focusDetail: Boolean = false) {
@@ -1303,6 +1309,59 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             } catch (ignored: Throwable) {
             }
         }
+    }
+
+    /** 当前分区内按屏幕位置排序的可聚焦控件。 */
+    private fun orderedFocusables(section: View): List<View> {
+        val out = ArrayList<View>()
+        fun collect(v: View) {
+            if (v is ViewGroup) {
+                for (i in 0 until v.childCount) collect(v.getChildAt(i))
+            } else if (v.isShown && v.isFocusable && v.isEnabled) {
+                out.add(v)
+            }
+        }
+        collect(section)
+        if (out.size <= 1) return out
+        val loc = Array(out.size) { IntArray(2) }
+        out.forEachIndexed { i, v -> v.getLocationOnScreen(loc[i]) }
+        return out.withIndex()
+            .sortedWith(compareBy({ loc[it.index][1] }, { loc[it.index][0] }))
+            .map { it.value }
+    }
+
+    /** 详情区焦点在指定方向上是否还有同分区的邻居，用来拦住 FocusFinder 的跨区跳转。 */
+    private fun settingsDetailHasNeighbor(horizontal: Boolean, forward: Boolean): Boolean {
+        val focused = currentFocus ?: return false
+        val sections = settingsSections()
+        val section = sections.getOrNull(currentSettingsTab.coerceIn(0, sections.lastIndex)) ?: return false
+        if (!containsFocus(section)) return false
+        val fLoc = IntArray(2)
+        focused.getLocationOnScreen(fLoc)
+        val fW = focused.width
+        val fH = focused.height
+        for (v in orderedFocusables(section)) {
+            if (v === focused) continue
+            val loc = IntArray(2)
+            v.getLocationOnScreen(loc)
+            if (horizontal) {
+                val overlapY = minOf(fLoc[1] + fH, loc[1] + v.height) - maxOf(fLoc[1], loc[1])
+                if (overlapY <= fH / 3) continue
+                if (forward && loc[0] > fLoc[0]) return true
+                if (!forward && loc[0] < fLoc[0]) return true
+            } else {
+                val overlapX = minOf(fLoc[0] + fW, loc[0] + v.width) - maxOf(fLoc[0], loc[0])
+                if (overlapX <= fW / 3) continue
+                if (forward && loc[1] > fLoc[1]) return true
+                if (!forward && loc[1] < fLoc[1]) return true
+            }
+        }
+        return false
+    }
+
+    private fun focusSettingsNavCurrent() {
+        val navs = settingsNavs()
+        navs.getOrNull(currentSettingsTab.coerceIn(0, navs.lastIndex))?.requestFocus()
     }
 
     /** 深度优先找第一个可聚焦子 View。 */
@@ -1847,23 +1906,49 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         val labels = files.map {
             "${it.name}（${fmt.format(Date(it.lastModified()))}，${(it.length() + 1023) / 1024} KB）"
         }
-        // 平台 AlertDialog 是白底，但列表项沿用暗色主题的白色文字，
-        // 不显式改色会变成白底白字、完全看不见。
-        val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, labels) {
-            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-                val v = super.getView(position, convertView, parent)
-                (v as TextView).setTextColor(0xFF1B1B1B.toInt())
-                return v
-            }
+        // 平台 AlertDialog 白底，ListView 的选中行没有焦点样式、文字还会白底白字。
+        // 这里改成自己排的焦点行：焦点实心蓝+白字，并默认停在最新一份备份上。
+        val density = resources.displayMetrics.density
+        val padH = (16 * density).toInt()
+        val listLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, (6 * density).toInt(), 0, (6 * density).toInt())
         }
-        AlertDialog.Builder(this)
+        val rowHeight = (52 * density).toInt()
+        val rows = files.mapIndexed { i, f ->
+            TextView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, rowHeight)
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(padH, 0, padH, 0)
+                text = labels[i]
+                textSize = 15f
+                isFocusable = true
+                isClickable = true
+                setBackgroundResource(R.drawable.bg_dialog_item)
+                setTextColor(ContextCompat.getColorStateList(this@MainActivity, R.color.dialog_item_text))
+                setOnClickListener { restoreFromFile(f) }
+            }.also { listLayout.addView(it) }
+        }
+        val scroll = ScrollView(this).apply {
+            // 最多显示 5 行，再多就滚动，避免备份很多时对话框超出屏幕
+            val visibleRows = files.size.coerceAtMost(5)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ((visibleRows * 52 + 12) * density).toInt()
+            )
+            isFillViewport = false
+            addView(listLayout)
+        }
+        val dialog = AlertDialog.Builder(this)
             .setTitle("选择要恢复的备份")
-            .setAdapter(adapter) { _, which -> restoreFromFile(files[which]) }
+            .setView(scroll)
             .setNeutralButton("从其他位置选择") { _, _ ->
                 openSystemRestorePicker("此设备没有可用的文件选择器")
             }
             .setNegativeButton("取消", null)
-            .show()
+            .create()
+        dialog.setOnShowListener { rows.firstOrNull()?.requestFocus() }
+        dialog.show()
     }
 
     private fun openSystemRestorePicker(emptyHint: String) {
@@ -2068,8 +2153,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         )
         for ((sec, view) in timeoutViews) {
             if (sec == current) {
-                view.setBackgroundColor(0x4FFFFFFF.toInt())
-                view.setTextColor(0xFF64B5F6.toInt())
+                view.setBackgroundResource(R.drawable.bg_option_selected)
+                view.setTextColor(0xFF7CB0FF.toInt())
                 view.paint.isFakeBoldText = true
             } else {
                 view.setBackgroundColor(0x00000000)
@@ -2466,8 +2551,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         )
         for ((key, view) in decoderViews) {
             if (key == current) {
-                view.setBackgroundColor(0x4FFFFFFF.toInt())
-                view.setTextColor(0xFF64B5F6.toInt())
+                view.setBackgroundResource(R.drawable.bg_option_selected)
+                view.setTextColor(0xFF7CB0FF.toInt())
                 view.paint.isFakeBoldText = true
             } else {
                 view.setBackgroundColor(0x00000000)
@@ -2511,8 +2596,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         )
         for ((key, view) in ratioViews) {
             if (key == current) {
-                view.setBackgroundColor(0x4FFFFFFF.toInt())
-                view.setTextColor(0xFF64B5F6.toInt())
+                view.setBackgroundResource(R.drawable.bg_option_selected)
+                view.setTextColor(0xFF7CB0FF.toInt())
                 view.paint.isFakeBoldText = true
             } else {
                 view.setBackgroundColor(0x00000000)
@@ -3450,21 +3535,24 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                     hideSettingsPanel(); true
                 }
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    // 焦点在导航列 -> 进入详情区并定位到当前值
-                    if (navFocused) {
-                        focusValueInSettingsSection(currentSettingsTab)
-                        true
-                    } else {
-                        super.onKeyDown(keyCode, event)
+                    // 焦点在导航列 -> 进入详情区并定位到当前值；详情区最右侧不再跳去「关闭」
+                    when {
+                        navFocused -> {
+                            focusValueInSettingsSection(currentSettingsTab)
+                            true
+                        }
+                        detailFocused && !settingsDetailHasNeighbor(horizontal = true, forward = true) -> true
+                        else -> super.onKeyDown(keyCode, event)
                     }
                 }
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
-                    // 焦点在详情区 -> 回到导航列当前项
-                    if (detailFocused) {
-                        settingNavs[currentSettingsTab.coerceIn(0, settingNavs.lastIndex)].requestFocus()
-                        true
-                    } else {
-                        super.onKeyDown(keyCode, event)
+                    // 详情区最左侧 -> 回到导航列当前项；同一行的多个选项之间仍可左右移动
+                    when {
+                        detailFocused && !settingsDetailHasNeighbor(horizontal = true, forward = false) -> {
+                            settingNavs[currentSettingsTab.coerceIn(0, settingNavs.lastIndex)].requestFocus()
+                            true
+                        }
+                        else -> super.onKeyDown(keyCode, event)
                     }
                 }
                 KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
@@ -3474,6 +3562,30 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                         true
                     } else {
                         super.onKeyDown(keyCode, event)
+                    }
+                }
+                KeyEvent.KEYCODE_DPAD_UP -> {
+                    // 详情区到顶回导航列当前项；导航列到顶去「关闭」按钮；
+                    // 不让 FocusFinder 自己找最近控件，否则会跳到相邻分类上
+                    when {
+                        detailFocused && !settingsDetailHasNeighbor(horizontal = false, forward = false) -> {
+                            focusSettingsNavCurrent(); true
+                        }
+                        navFocused && binding.navLineup.hasFocus() -> {
+                            binding.btnCloseSettings.requestFocus(); true
+                        }
+                        binding.btnCloseSettings.hasFocus() -> true
+                        else -> super.onKeyDown(keyCode, event)
+                    }
+                }
+                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    when {
+                        detailFocused && !settingsDetailHasNeighbor(horizontal = false, forward = true) -> true
+                        binding.btnCloseSettings.hasFocus() -> {
+                            focusSettingsNavCurrent(); true
+                        }
+                        navFocused && binding.navExit.hasFocus() -> true
+                        else -> super.onKeyDown(keyCode, event)
                     }
                 }
                 else -> super.onKeyDown(keyCode, event)
