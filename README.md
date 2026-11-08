@@ -6,11 +6,11 @@
 
 播放内核使用 **Media3 ExoPlayer 1.11.1**（Google 官方播放器内核），对 HLS 直播流兼容性最好，H.265/HEVC 高清源硬解。
 
-> 以下界面为**示意预览**（非真机截图）。
+> 以下界面为**真机截图**（1080p 盒子，演示源 + 公开测试流，仅作演示）。
 
 | 全屏播放 | 频道列表（OK 键唤出） | 设置面板（菜单键 / 列表内设置按钮） |
 | --- | --- | --- |
-| ![全屏播放](docs/screenshot-play.svg) | ![频道列表](docs/screenshot-channels.svg) | ![设置面板](docs/screenshot-settings.svg) |
+| ![全屏播放](docs/screenshot-play.jpg) | ![频道列表](docs/screenshot-channels.jpg) | ![设置面板](docs/screenshot-settings.jpg) |
 
 ## 功能
 
