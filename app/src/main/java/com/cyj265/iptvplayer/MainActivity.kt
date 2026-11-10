@@ -105,6 +105,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     /** 复用时间格式化器，避免 EPG 刷新时每频道 new 两次 SimpleDateFormat（GC 压力） */
     private val epgTimeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
     private var lastEpgAttemptAt = 0L
+    /** EPG 加载在途标志：防止启动加载、定时刷新、手动刷新同时起多个线程 */
+    @Volatile private var epgLoadInFlight = false
 
     private var videoW = 0
     private var videoH = 0
@@ -2909,8 +2911,9 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 file.delete()
             }
             val timestamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.getDefault()).format(java.util.Date())
-            val existing = if (file.exists()) file.readText(Charsets.UTF_8) else ""
-            file.writeText("$existing\n[$timestamp][Startup] $msg", Charsets.UTF_8)
+            // 追加写入：启动时该方法会连续调用多次，原来的 readText + writeText
+            // 每次都全量重写整个日志（上限 500KB），在启动主线程上是无谓的 IO 负担。
+            file.appendText("\n[$timestamp][Startup] $msg", Charsets.UTF_8)
         } catch (ignored: Exception) {}
     }
 
@@ -2956,6 +2959,18 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
      */
     private companion object {
         const val CHANNEL_SWITCH_DEBOUNCE_MS = 260L
+
+        /**
+         * 频道名归一化正则：全局只编译一次。
+         * 之前 normalizeEpgName 每次调用都 Regex(...) → Pattern.compile()，
+         * 而 EPG 索引会对数千条节目逐条归一化，在 onCreate 主线程触发
+         * 数千次正则编译，导致启动 ANR（Bugly #2008 / ANR_EXCEPTION）。
+         */
+        private val EPG_NAME_CLEAN = Regex("[^a-z0-9\u4e00-\u9fa5]")
+        private val EPG_QUALITY_SUFFIXES = listOf(
+            "极清", "超清", "高清", "标清", "流畅", "原画", "蓝光",
+            "4k", "8k", "uhd", "fhd", "hd", "sd", "2160p", "1080p", "720p"
+        )
     }
     private val switchHandler = Handler(Looper.getMainLooper())
     private var pendingSwitchDelta = 0
@@ -3141,84 +3156,103 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         // 节流：距上次尝试不足 10 秒不重复加载
         val nowMs = System.currentTimeMillis()
         if (nowMs - lastEpgAttemptAt < 10000 && epgLoadState == EpgLoadState.LOADING) return
+        if (epgLoadInFlight) return  // 启动加载 / 定时刷新 / 手动刷新并发时只保留第一个
         lastEpgAttemptAt = nowMs
-        // ★ v1.13.1：EPG 本地缓存 2 小时内直接使用（节目单按时间线显示，无需每次启动重新下载）。
-        // 缓存过期或不存在才后台重新获取；加载完成后再写回缓存。
+        // ★ EPG 本地缓存按时间线直接显示，有效期内无需重新下载。
+        // 缓存 JSON 约 1MB / 数千条节目，读取与建索引必须放在子线程：
+        // 之前在主线程执行，onCreate 被阻塞触发 ANR（Bugly #2008）。
         val cachedAge = nowMs - repository.epgUpdatedAt
-        val epgCache = repository.loadEpgCache()
         val cacheThresholdMs = repository.epgRefreshHours * 3600_000L
-        if (cachedAge in 0 until cacheThresholdMs && epgCache != null) {
-            val channelsSnapshot = allChannels
-            epgPrograms = indexEpgWithChannels(epgCache, channelsSnapshot)
-            epgLoadState = EpgLoadState.READY
-            updateNowPlaying()
-            adapter.epgNow = buildEpgNowMap()
-            adapter.epgNext = buildEpgNextMap()
-            updateProgramInfo()
-            return
-        }
+        val cacheUsable = cachedAge in 0 until cacheThresholdMs
+        epgLoadInFlight = true
         epgLoadState = EpgLoadState.LOADING
         updateProgramInfo()
         Thread {
-            var totalPrograms = 0
-            val mergedPrograms = ArrayList<EpgProgram>()
-            val mergedNames = HashMap<String, String>()
-            var loadError: String? = null
             try {
-                for (epgUrl in epgUrls) {
-                    try {
-                        val content = HttpLoader.fetch(epgUrl)
-                        val data = EpgParser.parse(content)
-                        mergedPrograms.addAll(data.programs)
-                        mergedNames.putAll(data.channelNames)
-                        totalPrograms += data.programs.size
-                    } catch (e: Exception) {
-                        if (loadError == null) loadError = e.message ?: e.javaClass.simpleName
+                // ① 缓存命中：后台读 1MB JSON + 建索引，完成后回主线程刷新 UI
+                if (cacheUsable) {
+                    val epgCache = repository.loadEpgCache()
+                    if (epgCache != null) {
+                        // 子线程取 allChannels 快照，避免与主线程 onChannelsLoaded 的赋值产生可见性问题
+                        val indexed = indexEpgWithChannels(epgCache, allChannels)
+                        runOnUiThread {
+                            if (isFinishing || isDestroyed) return@runOnUiThread
+                            try {
+                                epgPrograms = indexed
+                                epgLoadState = EpgLoadState.READY
+                                updateNowPlaying()
+                                adapter.epgNow = buildEpgNowMap()
+                                adapter.epgNext = buildEpgNextMap()
+                                updateProgramInfo()
+                            } catch (ignored: Throwable) {
+                            }
+                        }
+                        return@Thread
                     }
                 }
-            } catch (e: Exception) {
-                if (loadError == null) loadError = e.message ?: e.javaClass.simpleName
-            }
-            val finalState: EpgLoadState
-            if (mergedPrograms.isEmpty()) {
-                finalState = EpgLoadState.FAILED
-            } else {
-                // 修复：子线程中先取 allChannels 快照，避免与主线程 onChannelsLoaded
-                // 的赋值产生可见性问题（List 虽不可变，但显式快照更安全）
-                val channelsSnapshot = allChannels
-                epgPrograms = indexEpgWithChannels(EpgParser.EpgData(mergedNames, mergedPrograms), channelsSnapshot)
-                repository.epgProgramCount = totalPrograms
-                repository.epgUpdatedAt = System.currentTimeMillis()
-                repository.saveEpgCache(mergedNames, mergedPrograms)
-                epgLoadedCount = totalPrograms
-                finalState = EpgLoadState.READY
-            }
-            val err = loadError
-            runOnUiThread {
+                // ② 缓存不存在 / 已过期 / 损坏 → 走网络加载
+                var totalPrograms = 0
+                val mergedPrograms = ArrayList<EpgProgram>()
+                val mergedNames = HashMap<String, String>()
+                var loadError: String? = null
                 try {
-                    epgLoadState = finalState
-                    updateNowPlaying()
-                    adapter.epgNow = buildEpgNowMap()
-                    adapter.epgNext = buildEpgNextMap()
-                    updateProgramInfo()
-                    updateSourceStatus()
-                    if (finalState == EpgLoadState.FAILED) {
-                        if (!silent) {
+                    for (epgUrl in epgUrls) {
+                        try {
+                            val content = HttpLoader.fetch(epgUrl)
+                            val data = EpgParser.parse(content)
+                            mergedPrograms.addAll(data.programs)
+                            mergedNames.putAll(data.channelNames)
+                            totalPrograms += data.programs.size
+                        } catch (e: Exception) {
+                            if (loadError == null) loadError = e.message ?: e.javaClass.simpleName
+                        }
+                    }
+                } catch (e: Exception) {
+                    if (loadError == null) loadError = e.message ?: e.javaClass.simpleName
+                }
+                val finalState: EpgLoadState
+                if (mergedPrograms.isEmpty()) {
+                    finalState = EpgLoadState.FAILED
+                } else {
+                    // 修复：子线程中先取 allChannels 快照，避免与主线程 onChannelsLoaded
+                    // 的赋值产生可见性问题（List 虽不可变，但显式快照更安全）
+                    val channelsSnapshot = allChannels
+                    epgPrograms = indexEpgWithChannels(EpgParser.EpgData(mergedNames, mergedPrograms), channelsSnapshot)
+                    repository.epgProgramCount = totalPrograms
+                    repository.epgUpdatedAt = System.currentTimeMillis()
+                    repository.saveEpgCache(mergedNames, mergedPrograms)
+                    epgLoadedCount = totalPrograms
+                    finalState = EpgLoadState.READY
+                }
+                val err = loadError
+                runOnUiThread {
+                    try {
+                        epgLoadState = finalState
+                        updateNowPlaying()
+                        adapter.epgNow = buildEpgNowMap()
+                        adapter.epgNext = buildEpgNextMap()
+                        updateProgramInfo()
+                        updateSourceStatus()
+                        if (finalState == EpgLoadState.FAILED) {
+                            if (!silent) {
+                                Toast.makeText(
+                                    applicationContext,
+                                    "节目指南加载失败" + (if (err != null) "：" + err else ""),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        } else if (finalState == EpgLoadState.READY && totalPrograms > 0 && !silent) {
                             Toast.makeText(
                                 applicationContext,
-                                "节目指南加载失败" + (if (err != null) "：" + err else ""),
-                                Toast.LENGTH_LONG
+                                "节目指南加载成功（" + totalPrograms + " 条节目）",
+                                Toast.LENGTH_SHORT
                             ).show()
                         }
-                    } else if (finalState == EpgLoadState.READY && totalPrograms > 0 && !silent) {
-                        Toast.makeText(
-                            applicationContext,
-                            "节目指南加载成功（" + totalPrograms + " 条节目）",
-                            Toast.LENGTH_SHORT
-                        ).show()
+                    } catch (ignored: Throwable) {
                     }
-                } catch (ignored: Throwable) {
                 }
+            } finally {
+                epgLoadInFlight = false
             }
         }.start()
     }
@@ -3226,11 +3260,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     /** 频道名归一化：小写、去符号空格、去画质后缀（极清/高清/4K…），用于 EPG 模糊匹配 */
     private fun normalizeEpgName(name: String): String {
         var s = name.trim().lowercase(Locale.getDefault())
-        s = s.replace(Regex("[^a-z0-9\u4e00-\u9fa5]"), "")
-        for (suffix in listOf(
-            "极清", "超清", "高清", "标清", "流畅", "原画", "蓝光",
-            "4k", "8k", "uhd", "fhd", "hd", "sd", "2160p", "1080p", "720p"
-        )) {
+        s = EPG_NAME_CLEAN.replace(s, "")
+        for (suffix in EPG_QUALITY_SUFFIXES) {
             s = s.removeSuffix(suffix)
         }
         return s
@@ -3242,7 +3273,11 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         val byNorm = HashMap<String, MutableList<EpgProgram>>()
         for (p in data.programs) {
             byName.getOrPut(p.channelId) { ArrayList() }.add(p)
-            byNorm.getOrPut(normalizeEpgName(p.channelId)) { ArrayList() }.add(p)
+        }
+        // 只对「不同的 channelId」归一化一次：数千条节目通常只对应约百个频道，
+        // 避免逐条节目重复做字符串归一化（配合预编译正则，索引耗时降一个数量级）。
+        for ((channelId, list) in byName) {
+            byNorm.getOrPut(normalizeEpgName(channelId)) { ArrayList() }.addAll(list)
         }
         for (ch in allChannels) {
             // 1) 精确匹配 tvgId / 频道名
@@ -3263,7 +3298,11 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         val byNorm = HashMap<String, MutableList<EpgProgram>>()
         for (p in data.programs) {
             byName.getOrPut(p.channelId) { ArrayList() }.add(p)
-            byNorm.getOrPut(normalizeEpgName(p.channelId)) { ArrayList() }.add(p)
+        }
+        // 只对「不同的 channelId」归一化一次：数千条节目通常只对应约百个频道，
+        // 避免逐条节目重复做字符串归一化（配合预编译正则，索引耗时降一个数量级）。
+        for ((channelId, list) in byName) {
+            byNorm.getOrPut(normalizeEpgName(channelId)) { ArrayList() }.addAll(list)
         }
         for (ch in channels) {
             var list = byName[ch.tvgId] ?: byName[ch.name]
