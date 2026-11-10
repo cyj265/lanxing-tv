@@ -341,7 +341,12 @@ class PlaybackManager(
                 3_000     // bufferForPlaybackAfterRebufferMs：卡顿后恢复所需缓冲
             )
             .build()
+        // 官方包只包含 media3 官方三个模块，不含任何解码扩展。显式关闭扩展渲染器：
+        // 某些第三方改包或定制 ROM 会自行注入 ffmpeg 软解扩展，其编译版本常与主库
+        // 不一致，反射加载后会在轨道选择阶段抛 NoSuchMethodError / ClassNotFoundException。
+        // 1.11.1 默认即为 OFF，这里固化该行为，避免升级内核后默认值变化。
         val renderersFactory = DefaultRenderersFactory(context)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
         // 重要：不强制禁用异步 MediaCodec 队列。
         // 斐讯 T1（S912/Android 7）上影视仓 EXO 硬解 4K HEVC 都能流畅，
         // 用的就是 Media3 默认 async 配置；我们上一版 forceDisable 异步队列后，
