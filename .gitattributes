@@ -1,0 +1,4 @@
+# 仓库内统一 LF。本机 core.autocrlf=true 会把检出文件转成 CRLF，
+# 某次工具改写就可能造成「什么都没改但 diff 满屏」；明确声明后各端行为一致。
+* text=auto eol=lf
+*.bat text eol=crlf

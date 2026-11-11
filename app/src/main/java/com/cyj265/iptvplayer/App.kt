@@ -123,7 +123,9 @@ class App : Application() {
             val strategy = CrashReport.UserStrategy(applicationContext).apply {
                 this.deviceID = deviceId
                 appChannel = "github"
-                appVersion = BuildConfig.VERSION_NAME
+                // 带上构建号：同一 versionName 下的每个 CI 构建在 Bugly 里独立成版本，
+                // 否则 #291/#292… 全部聚合到「1.16.6」，趋势图无法定位是哪个构建引入的问题。
+                appVersion = "${BuildConfig.VERSION_NAME}.${BuildConfig.BUILD_NUMBER}"
                 appPackageName = packageName
             }
 

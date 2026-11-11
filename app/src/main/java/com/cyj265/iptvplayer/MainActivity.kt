@@ -2264,7 +2264,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         Thread {
             try {
                 val json = fetchLatestReleaseJson()
-                val tag = json.getString("tag_name").removePrefix("v")
+                val tag = json.getString("tag_name").removePrefix("v").substringBefore("-b")
                 val assets = json.getJSONArray("assets")
                 var apkUrl: String? = null
                 var apkName: String? = null
@@ -2297,7 +2297,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 }
                 // 没更新或没有APK：什么都不做（不打扰）
             } catch (e: Exception) {
-                // 检查失败：什么都不做（不打扰）
+                // 检查失败：不打扰用户，但留痕便于排查
+                logUpdateIssue("autoCheck: fetch/parse", e)
             }
         }.start()
     }
@@ -2307,7 +2308,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         Thread {
             try {
                 val json = fetchLatestReleaseJson(15000, 15000)
-                val tag = json.getString("tag_name").removePrefix("v")
+                val tag = json.getString("tag_name").removePrefix("v").substringBefore("-b")
                 val assets = json.getJSONArray("assets")
                 var apkUrl: String? = null
                 var apkName: String? = null
@@ -2344,6 +2345,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                     }
                 }
             } catch (e: Exception) {
+                logUpdateIssue("manualCheck: fetch/parse", e)
                 runOnUiThread {
                     try {
                         binding.tvUpdateStatus.text =
@@ -2434,11 +2436,14 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                         try {
                             binding.tvUpdateStatus.text = getString(R.string.update_done)
                             installApk(apk)
-                        } catch (ignored: Throwable) {}
+                        } catch (e: Throwable) {
+                            logUpdateIssue("download: installApk", e)
+                        }
                     }
                     return@Thread  // 下载成功，退出
                 } catch (e: Exception) {
                     lastError = e.message ?: "下载失败"
+                    logUpdateIssue("download: $urlName failed", e)
                     // 如果还有下一个链接，自动切换
                     if (idx < urls.size - 1) {
                         runOnUiThread {
@@ -2451,6 +2456,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 }
             }
             // 所有链接都失败
+            logUpdateIssue("download: all lines failed", Exception(lastError ?: "unknown"))
             runOnUiThread {
                 try {
                     binding.tvUpdateStatus.text = getString(R.string.update_failed, lastError ?: "所有线路均下载失败")
@@ -2915,6 +2921,28 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             // 每次都全量重写整个日志（上限 500KB），在启动主线程上是无谓的 IO 负担。
             file.appendText("\n[$timestamp][Startup] $msg", Charsets.UTF_8)
         } catch (ignored: Exception) {}
+    }
+
+    /**
+     * 更新链路的失败留痕：写到与启动日志同一个文件，用户报「更新没反应」时可查到具体环节。
+     * 内部全程兜底，绝不因写日志失败影响更新流程。
+     */
+    private fun logUpdateIssue(where: String, e: Throwable?) {
+        try {
+            Log.w("LanXingTV-Update", where, e)
+        } catch (ignored: Throwable) {}
+        try {
+            val file = crashFile()
+            if (file.exists() && file.length() > 500 * 1024) file.delete()
+            val timestamp = java.text.SimpleDateFormat(
+                "yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.getDefault()
+            ).format(java.util.Date())
+            val detail = (e?.javaClass?.simpleName ?: "-") + ": " + (e?.message ?: "-")
+            file.appendText(
+                "${System.lineSeparator()}[$timestamp][Update] $where: $detail",
+                Charsets.UTF_8
+            )
+        } catch (ignored: Throwable) {}
     }
 
     private fun resumeLastChannel() {
@@ -3844,6 +3872,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     override fun onDestroy() {
         overlayHandler.removeCallbacksAndMessages(null)
         clockHandler.removeCallbacksAndMessages(null)
+        // 换台防抖任务必须撤销：Activity 销毁 260ms 后仍可能触发换台并访问已 release 的播放器。
+        switchHandler.removeCallbacksAndMessages(null)
         previewHandler.removeCallbacksAndMessages(null)
         surfaceResumeHandler.removeCallbacksAndMessages(null)
         sleepTimerHandler.removeCallbacksAndMessages(null)

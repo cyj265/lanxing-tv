@@ -6,6 +6,12 @@ on:
     tags: ['**']
   workflow_dispatch:
 
+# 同一 ref 的构建串行排队：发布链路会删除旧资产，两个并发 run 会互相删掉对方的 APK。
+# 不取消进行中的任务，排队比中途取消安全（取消可能留下只上传了一半的 Release）。
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -14,18 +20,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v6.0.1
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Gradle 8.9
-        uses: gradle/actions/setup-gradle@v4
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
         with:
-          gradle-version: '8.9'
+          # 跟随仓库 gradle/wrapper/gradle-wrapper.properties。
+          # 固定写 8.9 会在本地升级 wrapper 后悄悄与 CI 分叉；用 wrapper 让两端同源。
+          gradle-version: 'wrapper'
 
       # release 自签证书：从 Secrets 解码为 PKCS#12 文件，避免 debug 证书被 Google Play Protect 拦截。
       - name: Setup release keystore
@@ -58,6 +66,8 @@ jobs:
             echo "::notice title=Bugly::已注入 BUGLY_APP_ID（长度 ${#BUGLY_APP_ID}）"
           fi
           set +e
+          # 用 setup-gradle 提供的 gradle 命令（版本取自 wrapper）。
+          # 仓库里 gradlew 的执行位是 100644，CI 上直接 ./gradlew 会 Permission denied。
           gradle assembleRelease --no-daemon 2>&1 | tee build.log
           status=${PIPESTATUS[0]}
           echo "BUILD_EXIT=$status" >> $GITHUB_ENV
@@ -65,7 +75,7 @@ jobs:
 
       - name: Upload build log
         if: always()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: build-log
           path: build.log
@@ -90,23 +100,38 @@ jobs:
           echo "APK ready: iptv-player-v${{ github.run_number }}.apk"
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: iptv-player-apk
           path: dist/*.apk
           retention-days: 30
 
-      - name: Auto tag release version
-        if: github.ref == 'refs/heads/main'
+      # 每个发布构建一个唯一 tag，指向本次构建的 commit。
+      # 旧做法用 v<versionName> 且 git tag/push 都带 || true：tag 永远停在首次发布，
+      # 后续构建只替换同 tag 下的 APK，「git checkout <tag>」重建不出用户手上的包。
+      # 资产名保持 iptv-player-v<run_number>.apk 不变 —— App 的更新检测靠
+      # extractBuildNumber 的 v(\d+)\.apk$ 正则取号，改名字会让公开用户收不到更新。
+      - name: Resolve and create release tag
+        if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
         run: |
-          git config user.name "github-actions"
-          git config user.email "actions@github.com"
-          TAG="v$(grep versionName app/build.gradle.kts | sed -E 's/.*"([^"]+)".*/\1/')"
-          echo "TAG=$TAG"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG="$GITHUB_REF_NAME"
+            echo "Reusing existing tag: $TAG"
+          else
+            VER=$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' app/build.gradle.kts)
+            TAG="v${VER}-b${GITHUB_RUN_NUMBER}"
+            git config user.name "github-actions"
+            git config user.email "actions@github.com"
+            # 重跑（rerun）沿用同一 run_number，tag 已存在时直接复用，不要因此失败。
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+              echo "Tag $TAG already exists (rerun), reusing"
+            else
+              git tag "$TAG"
+              git push origin "$TAG"
+              echo "Created tag: $TAG -> $GITHUB_SHA"
+            fi
+          fi
           echo "TAG=$TAG" >> "$GITHUB_ENV"
-          git tag "$TAG" 2>/dev/null || true
-          git push origin "$TAG" 2>/dev/null || true
-          echo "Tag pushed: $TAG"
 
       - name: Verify dist before publish
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
@@ -121,13 +146,23 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
         run: |
           mkdir -p dist
+          # 首段版本号必须与本次 versionName 一致，防止忘记改 changelog 就发了上一版的说明。
+          VER=$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' app/build.gradle.kts)
+          FIRST=$(awk '/^## /{n++} n==1 {print; exit}' app/src/main/assets/changelog.md | tr -d ' \r')
+          if [ "$FIRST" != "##v${VER}" ]; then
+            echo "::error::changelog 首段 '$FIRST' 与 versionName v${VER} 不一致，请更新 changelog.md 后再发版"
+            exit 1
+          fi
           awk '/^## /{n++} n==1' app/src/main/assets/changelog.md > dist/RELEASE_NOTES.md
+          # 记录本次构建的源码锚点，便于按 commit 复现用户报的问题。
+          # 该行不以 "- " 开头，App 的 formatReleaseNotes 不会把它显示进弹窗。
+          printf '\n\n构建 #%s · 源码 `%s`\n' "$GITHUB_RUN_NUMBER" "$GITHUB_SHA" >> dist/RELEASE_NOTES.md
           echo "=== release notes ==="
           cat dist/RELEASE_NOTES.md
 
       - name: Publish Release
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ env.TAG }}
           body_path: dist/RELEASE_NOTES.md
@@ -135,7 +170,8 @@ jobs:
             dist/*.apk
           fail_on_unmatched_files: true
 
-      # 清理 Release 旧资产：只保留本次构建的 APK，避免资产越堆越多
+      # 清理 Release 旧资产：只保留本次构建的 APK。
+      # 唯一 tag 下通常没有旧资产；这一步主要防手工重推旧 tag 时残留多个 APK。
       - name: Clean old release assets
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
         env:
@@ -152,14 +188,17 @@ jobs:
             fi
           done
 
-      # 清理 Release 列表：只保留最近 3 个（含本次），更早的 Release 与 tag 一并删除
+      # 清理 Release 列表：只保留最近 3 个 Release。
+      # 只删 Release，不删 tag —— Release 是分发物，tag 是源码锚点（一个 40 字节 ref，
+      # 留着才能 checkout 任意历史版本）。早期版本连 tag 一起删，导致 v1.16.2/v1.16.3
+      # 本地还在、远端已消失。
       - name: Keep only latest 3 releases
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PYEOF'
-          import subprocess, urllib.parse
+          import subprocess
 
           repo = "${{ github.repository }}"
 
@@ -177,8 +216,6 @@ jobs:
                   continue
               print(f"deleting release {tag} id={rid}")
               gh("-X", "DELETE", f"repos/{repo}/releases/{rid}")
-              safe = urllib.parse.quote(tag, safe="")
-              gh("-X", "DELETE", f"repos/{repo}/git/refs/tags/{safe}")
               deleted += 1
           print(f"done, deleted={deleted}")
           PYEOF
