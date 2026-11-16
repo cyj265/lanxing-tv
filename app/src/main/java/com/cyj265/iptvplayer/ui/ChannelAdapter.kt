@@ -7,6 +7,8 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
+import coil.load
+import coil.transform.CircleCropTransformation
 import com.cyj265.iptvplayer.R
 import com.cyj265.iptvplayer.data.Channel
 import com.cyj265.iptvplayer.databinding.ItemChannelBinding
@@ -207,10 +209,27 @@ class ChannelAdapter(
             } else {
                 holder.binding.tvEpgNext.visibility = View.GONE
             }
-            // 首字母 Logo 占位（暂不加载网络 Logo，用频道名首字+亮蓝圆形背景）
+            // 频道 Logo：有 tvg-logo 则加载网络台标，否则/失败时回退首字母圆形占位。
+            // 每次 bind 都显式设定两个 View 的状态，避免 RecyclerView 复用残留。
             val firstChar = ch.name.replace(Regex("[^\\w\\u4e00-\\u9fa5]"), "").firstOrNull()?.toString() ?: "?"
             holder.binding.tvLogoPlaceholder.text = firstChar
-            holder.binding.ivChannelLogo.visibility = View.GONE
+            val logoUrl = ch.logo
+            if (logoUrl.isNotBlank()) {
+                holder.binding.ivChannelLogo.visibility = View.VISIBLE
+                holder.binding.tvLogoPlaceholder.visibility = View.GONE
+                holder.binding.ivChannelLogo.load(logoUrl) {
+                    crossfade(true)
+                    transformations(CircleCropTransformation())
+                    listener(onError = { _, _ ->
+                        // 台标失效很常见（源地址来自用户 M3U），失败一律回退首字母，不留空白
+                        holder.binding.ivChannelLogo.visibility = View.GONE
+                        holder.binding.tvLogoPlaceholder.visibility = View.VISIBLE
+                    })
+                }
+            } else {
+                holder.binding.ivChannelLogo.visibility = View.GONE
+                holder.binding.tvLogoPlaceholder.visibility = View.VISIBLE
+            }
             val isFav = favorites.contains(ch.url)
             holder.binding.ivFavorite.visibility = if (isFav) View.VISIBLE else View.GONE
             holder.binding.ivFavorite.setColorFilter(

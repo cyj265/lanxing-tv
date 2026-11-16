@@ -128,4 +128,8 @@ dependencies {
     // Bugly 崩溃自动上报（崩溃自动上传到 bugly.qq.com，无需用户手动导出日志）
     // AppID 在 App.kt 中配置，为空则不上报
     implementation("com.tencent.bugly:crashreport:4.1.9.3")
+
+    // 频道台标加载：Coil 2.7.0（2.x 最终稳定版，minSdk 21 适配老盒子）。
+    // 自带内存/磁盘缓存、请求跟随 View 生命周期取消，避免 RecyclerView 滚动错位。
+    implementation("io.coil-kt:coil:2.7.0")
 }
