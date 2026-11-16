@@ -1,22 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="bg_dark">#0E1116</color>
-    <color name="bg_panel">#1A1E24</color>
-    <color name="bg_item">#232830</color>
-    <color name="bg_item_focused">#2C3542</color>
-    <color name="bg_item_selected">#2F7CF6</color>
-    <color name="text_primary">#F2F4F8</color>
-    <color name="text_secondary">#9AA3B0</color>
-    <color name="text_tertiary">#5A6270</color>
-    <color name="accent">#3D8BFF</color>
-    <color name="accent_dim">#1F5CC8</color>
-    <color name="accent_soft">#7CB0FF</color>
-    <color name="bg_overlay">#CC0E1116</color>
-    <color name="bg_overlay_strong">#F20E1116</color>
-    <color name="ic_launcher_background">#0E1116</color>
+    <!-- 深蓝灰主题：TiviMate 式通透深色，靠蓝色调与分层取代近黑，遥控器远看更清晰 -->
+    <color name="bg_dark">#111827</color>
+    <color name="bg_panel">#1B2438</color>
+    <color name="bg_item">#1E2A44</color>
+    <color name="bg_item_focused">#2A3A5C</color>
+    <color name="bg_item_selected">#1E2C4C</color>
+    <color name="text_primary">#E8EDF7</color>
+    <color name="text_secondary">#8FA0BC</color>
+    <color name="text_tertiary">#5C6B85</color>
+    <color name="accent">#4C9DFF</color>
+    <color name="accent_dim">#2E6FD9</color>
+    <color name="accent_soft">#8FC4FF</color>
+    <color name="bg_overlay">#CC111827</color>
+    <color name="bg_overlay_strong">#F2111827</color>
+    <color name="ic_launcher_background">#111827</color>
     <!-- 启动图片 -->
-    <color name="splash_bg">#0A0D12</color>
-    <color name="splash_text">#F2F4F8</color>
-    <color name="splash_text_dim">#6B7280</color>
+    <color name="splash_bg">#0D1424</color>
+    <color name="splash_text">#E8EDF7</color>
+    <color name="splash_text_dim">#7C8AA5</color>
     <color name="splash_accent">#4FC3F7</color>
 </resources>

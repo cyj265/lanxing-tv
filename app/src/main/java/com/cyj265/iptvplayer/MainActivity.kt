@@ -740,7 +740,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                     // 焦点样式：亮蓝背景 + 白字加粗（和频道列表统一）
                     onFocusChangeListener = View.OnFocusChangeListener { _, focused ->
                         if (focused) {
-                            setBackgroundColor(0xFF3D8BFF.toInt())
+                            setBackgroundColor(0xFF4C9DFF.toInt())
                             setTextColor(0xFFFFFFFF.toInt())
                             setTypeface(typeface, Typeface.BOLD)
                         } else {
@@ -925,7 +925,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             setTextColor(0xFFFFFFFF.toInt())
             setHintTextColor(0xFF999999.toInt())
             setPadding(40, 30, 40, 30)
-            setBackgroundColor(0xFF1A1A2E.toInt())
+            setBackgroundColor(0xFF1B2438.toInt())
         }
         android.app.AlertDialog.Builder(this)
             .setTitle("添加直播源")
@@ -965,7 +965,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             setTextColor(0xFFFFFFFF.toInt())
             setHintTextColor(0xFF999999.toInt())
             setPadding(40, 30, 40, 30)
-            setBackgroundColor(0xFF1A1A2E.toInt())
+            setBackgroundColor(0xFF1B2438.toInt())
         }
         android.app.AlertDialog.Builder(this)
             .setTitle("节目单地址（EPG）")
@@ -1033,10 +1033,10 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
 
     private fun updateEpgRefreshUI() {
         val h = repository.epgRefreshHours
-        val activeBg = 0xFF3D8BFF.toInt()
+        val activeBg = 0xFF4C9DFF.toInt()
         val activeText = 0xFFFFFFFF.toInt()
         val normalBg = 0x00000000.toInt()
-        val normalText = 0xFFCCCCCC.toInt()
+        val normalText = 0xFF8FA0BC.toInt()
         listOf(binding.epgRefresh1h to 1, binding.epgRefresh2h to 2, binding.epgRefreshDaily to 24).forEach { (v, hh) ->
             if (h == hh) {
                 v.setBackgroundColor(activeBg)
@@ -2156,7 +2156,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         for ((sec, view) in timeoutViews) {
             if (sec == current) {
                 view.setBackgroundResource(R.drawable.bg_option_selected)
-                view.setTextColor(0xFF7CB0FF.toInt())
+                view.setTextColor(0xFF8FC4FF.toInt())
                 view.paint.isFakeBoldText = true
             } else {
                 view.setBackgroundColor(0x00000000)
@@ -2560,7 +2560,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         for ((key, view) in decoderViews) {
             if (key == current) {
                 view.setBackgroundResource(R.drawable.bg_option_selected)
-                view.setTextColor(0xFF7CB0FF.toInt())
+                view.setTextColor(0xFF8FC4FF.toInt())
                 view.paint.isFakeBoldText = true
             } else {
                 view.setBackgroundColor(0x00000000)
@@ -2605,7 +2605,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         for ((key, view) in ratioViews) {
             if (key == current) {
                 view.setBackgroundResource(R.drawable.bg_option_selected)
-                view.setTextColor(0xFF7CB0FF.toInt())
+                view.setTextColor(0xFF8FC4FF.toInt())
                 view.paint.isFakeBoldText = true
             } else {
                 view.setBackgroundColor(0x00000000)
@@ -3952,7 +3952,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             // 选中样式：蓝字（无背景），与焦点亮蓝背景区分
             holder.tvName.setBackgroundColor(0x00000000)
             holder.tvName.setTextColor(
-                if (isSelected) 0xFF3D8BFF.toInt() else 0xFFCCCCCC.toInt()
+                if (isSelected) 0xFF4C9DFF.toInt() else 0xFFCCCCCC.toInt()
             )
             holder.tvName.paint.isFakeBoldText = isSelected
             // 焦点样式：圆角亮蓝背景 + 白字加粗；焦点移动即切换分组（无需 OK）
@@ -3965,7 +3965,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 } else {
                     holder.tvName.setBackgroundResource(0)
                     holder.tvName.setTextColor(
-                        if (isSelected) 0xFF3D8BFF.toInt() else 0xFFCCCCCC.toInt()
+                        if (isSelected) 0xFF4C9DFF.toInt() else 0xFFCCCCCC.toInt()
                     )
                     holder.tvName.paint.isFakeBoldText = isSelected
                 }

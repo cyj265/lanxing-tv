@@ -43,11 +43,11 @@ class EpgListAdapter : RecyclerView.Adapter<EpgListAdapter.EpgViewHolder>() {
             binding.tvEpgTime.text = timeFormat.format(Date(program.start))
             binding.tvEpgTitle.text = program.title
             if (isCurrent) {
-                binding.tvEpgTime.setTextColor(0xFF3D8BFF.toInt())
+                binding.tvEpgTime.setTextColor(0xFF4C9DFF.toInt())
                 binding.tvEpgTitle.setTextColor(0xFFFFFFFF.toInt())
-                binding.root.setBackgroundColor(0x1A3D8BFF.toInt())
+                binding.root.setBackgroundColor(0x1A4C9DFF.toInt())
             } else {
-                binding.tvEpgTime.setTextColor(0xFF9AA3B0.toInt())
+                binding.tvEpgTime.setTextColor(0xFF8FA0BC.toInt())
                 binding.tvEpgTitle.setTextColor(0xFFC8CDD6.toInt())
                 binding.root.setBackgroundColor(0x00000000)
             }

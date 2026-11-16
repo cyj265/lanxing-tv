@@ -13,7 +13,7 @@
         android:id="@+id/tvEpgTime"
         android:layout_width="48dp"
         android:layout_height="wrap_content"
-        android:textColor="#9AA3B0"
+        android:textColor="#8FA0BC"
         android:textSize="12sp"
         android:textStyle="bold"
         android:maxLines="1" />

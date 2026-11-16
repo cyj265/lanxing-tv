@@ -97,9 +97,10 @@ android {
 }
 
 dependencies {
-    // core-ktx 保持 1.13.1：1.15+ 起要求 AGP 9.1.0 / compileSdk 37，
-    // 升级需同步跳 AGP 9.x + Gradle 9.x，留到构建链专项升级时一起做。
-    implementation("androidx.core:core-ktx:1.13.1")
+    // core-ktx 保持 1.16.0：minCompileSdk=35，与当前 AGP 8.7.3 支持上限一致。
+    // 1.17+ 要求 minCompileSdk=36 → 触发 AGP 需 8.9.1+ 的校验失败；1.19+ 更是要 37。
+    // 要升到 1.17+ 必须先成套升级 AGP 9.x + Gradle 9.x，留到构建链专项升级时再上。
+    implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.appcompat:appcompat:1.8.0")
     implementation("androidx.recyclerview:recyclerview:1.4.0")
     implementation("androidx.constraintlayout:constraintlayout:2.2.2")
@@ -127,7 +128,7 @@ dependencies {
 
     // Bugly 崩溃自动上报（崩溃自动上传到 bugly.qq.com，无需用户手动导出日志）
     // AppID 在 App.kt 中配置，为空则不上报
-    implementation("com.tencent.bugly:crashreport:4.1.9.3")
+    implementation("com.tencent.bugly:crashreport:4.1.9.7")
 
     // 频道台标加载：Coil 2.7.0（2.x 最终稳定版，minSdk 21 适配老盒子）。
     // 自带内存/磁盘缓存、请求跟随 View 生命周期取消，避免 RecyclerView 滚动错位。
