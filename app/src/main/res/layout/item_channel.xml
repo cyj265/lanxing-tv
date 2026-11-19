@@ -25,10 +25,10 @@
         android:gravity="center"
         android:maxLines="1" />
 
-    <!-- 频道 Logo（圆形，无 Logo 时显示首字母占位） -->
+    <!-- 频道 Logo：按台标原始比例完整显示（fitCenter，不裁圆），无 Logo 时显示首字母圆角占位 -->
     <FrameLayout
-        android:layout_width="38dp"
-        android:layout_height="38dp"
+        android:layout_width="46dp"
+        android:layout_height="36dp"
         android:layout_marginLeft="6dp"
         android:layout_marginRight="10dp">
 
@@ -36,8 +36,8 @@
             android:id="@+id/ivChannelLogo"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:scaleType="centerCrop"
-            android:background="@drawable/bg_circle"
+            android:scaleType="fitCenter"
+            android:background="@drawable/bg_logo_plate"
             android:visibility="gone"
             android:contentDescription="@string/channel_logo" />
 
@@ -47,9 +47,9 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:textColor="#FFFFFF"
-            android:textSize="16sp"
+            android:textSize="15sp"
             android:textStyle="bold"
-            android:background="@drawable/bg_circle_accent"
+            android:background="@drawable/bg_logo_placeholder"
             android:maxLines="1" />
     </FrameLayout>
 

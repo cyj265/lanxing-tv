@@ -8,7 +8,6 @@ import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
-import coil.transform.CircleCropTransformation
 import com.cyj265.iptvplayer.R
 import com.cyj265.iptvplayer.data.Channel
 import com.cyj265.iptvplayer.databinding.ItemChannelBinding
@@ -209,7 +208,9 @@ class ChannelAdapter(
             } else {
                 holder.binding.tvEpgNext.visibility = View.GONE
             }
-            // 频道 Logo：有 tvg-logo 则加载网络台标，否则/失败时回退首字母圆形占位。
+            // 频道 Logo：按台标原始比例完整显示（ImageView 的 fitCenter），
+            // 不再裁成圆形——多数台标是矩形/带文字，裁圆会把内容切掉。
+            // 无 Logo 或加载失败时回退首字母圆角占位。
             // 每次 bind 都显式设定两个 View 的状态，避免 RecyclerView 复用残留。
             val firstChar = ch.name.replace(Regex("[^\\w\\u4e00-\\u9fa5]"), "").firstOrNull()?.toString() ?: "?"
             holder.binding.tvLogoPlaceholder.text = firstChar
@@ -219,7 +220,6 @@ class ChannelAdapter(
                 holder.binding.tvLogoPlaceholder.visibility = View.GONE
                 holder.binding.ivChannelLogo.load(logoUrl) {
                     crossfade(true)
-                    transformations(CircleCropTransformation())
                     listener(onError = { _, _ ->
                         // 台标失效很常见（源地址来自用户 M3U），失败一律回退首字母，不留空白
                         holder.binding.ivChannelLogo.visibility = View.GONE
