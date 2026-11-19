@@ -4,6 +4,14 @@ on:
   push:
     branches: [main, master]
     tags: ['**']
+    # 纯文档/许可证改动不触发构建：否则一次 README 修改就会多发一个 Release，
+    # 所有已安装用户都会被提示「有新版本」，但内容没有任何变化。
+    # 注意 paths 过滤对 tag push 不生效（tag 事件总是触发）。
+    paths-ignore:
+      - '**.md'
+      - 'LICENSE'
+      - 'docs/**'
+      - '.gitignore'
   workflow_dispatch:
 
 # 同一 ref 的构建串行排队：发布链路会删除旧资产，两个并发 run 会互相删掉对方的 APK。
