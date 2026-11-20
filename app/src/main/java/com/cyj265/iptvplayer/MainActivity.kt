@@ -1562,6 +1562,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
 
         binding.tvVersion.text = "v" + BuildConfig.VERSION_NAME
         binding.btnCheckUpdate.setOnClickListener { checkUpdate() }
+        binding.btnDownloadProxy.setOnClickListener { testDownloadProxies() }
+        updateDownloadProxyLabel()
         // 启动自动检查更新开关
         binding.switchAutoUpdate.isChecked = autoUpdateCheck
         binding.switchAutoUpdate.setOnCheckedChangeListener { _, isChecked ->
@@ -2229,9 +2231,104 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
      * 拉取最新 Release JSON：先直连 GitHub API，失败后自动走 gh-proxy 加速线路。
      * 国内网络直连 api.github.com 经常超时/被重置，只靠直连会永远检测不到更新。
      */
+    // ---------- 下载线路 ----------
+
+    private fun currentDownloadProxy(): String =
+        try {
+            getSharedPreferences("settings", MODE_PRIVATE).getString("download_proxy", "") ?: ""
+        } catch (ignored: Throwable) {
+            ""
+        }
+
+    /** 只给 GitHub 系 URL 加代理前缀；非 GitHub 链接不处理。 */
+    private fun withDownloadProxy(raw: String, prefix: String): String? {
+        if (prefix.isBlank()) return null
+        if (!raw.startsWith("https://github.com/") &&
+            !raw.startsWith("https://api.github.com/")
+        ) return null
+        return prefix + raw
+    }
+
+    /**
+     * 构造下载/检查线路：默认直连优先 + gh-proxy 回退；
+     * 用户选定某线路后该线路优先，直连作为回退。返回（URL 列表，显示名列表）。
+     */
+    private fun updateUrls(raw: String): Pair<List<String>, List<String>> {
+        val pref = currentDownloadProxy()
+        val fallbackPrefix = if (pref.isBlank()) "https://gh-proxy.com/" else pref
+        val proxied = withDownloadProxy(raw, fallbackPrefix)
+        if (proxied == null) return listOf(raw) to listOf("")
+        return if (pref.isBlank()) {
+            listOf(raw, proxied) to listOf("直连", "加速")
+        } else {
+            listOf(proxied, raw) to listOf("加速", "直连")
+        }
+    }
+
+    private fun updateDownloadProxyLabel() {
+        val pref = currentDownloadProxy()
+        val name = downloadProxyOptions.firstOrNull { it.first == pref }?.second ?: "自定义"
+        binding.btnDownloadProxy.text = "下载线路：$name（点击切换/测速）"
+    }
+
+    /** 并行测速所有候选线路，弹出结果列表供选择。全程兜底，不影响更新主流程。 */
+    private fun testDownloadProxies() {
+        binding.tvDownloadProxyStatus.text = "正在测速各线路（约 15 秒）…"
+        Thread {
+            val results = downloadProxyOptions.map { (prefix, name) ->
+                val url = withDownloadProxy(PROXY_TEST_URL, prefix) ?: PROXY_TEST_URL
+                val started = System.currentTimeMillis()
+                var ok = false
+                try {
+                    val conn = URL(url).openConnection() as HttpURLConnection
+                    conn.connectTimeout = 8000
+                    conn.readTimeout = 12000
+                    conn.setRequestProperty("User-Agent", "LanXingTV")
+                    conn.setRequestProperty("Cache-Control", "no-cache")
+                    val code = conn.responseCode
+                    val size = conn.inputStream.use { it.readBytes().size }
+                    conn.disconnect()
+                    ok = code == 200 && size > 0
+                } catch (ignored: Throwable) {
+                }
+                val ms = if (ok) System.currentTimeMillis() - started else -1L
+                Triple(prefix, name, ms)
+            }
+            runOnUiThread {
+                try {
+                    val best = results.filter { it.third >= 0 }.minByOrNull { it.third }
+                    binding.tvDownloadProxyStatus.text = if (best == null) {
+                        "全部线路测速失败，可稍后重试"
+                    } else {
+                        "最优：${best.second} ${best.third}ms"
+                    }
+                    val labels = results.map { (_, name, ms) ->
+                        if (ms >= 0) "$name · ${ms}ms" else "$name · 不可用"
+                    }.toTypedArray()
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("选择下载线路")
+                        .setItems(labels) { _, which ->
+                            val selected = results[which].first
+                            try {
+                                getSharedPreferences("settings", MODE_PRIVATE)
+                                    .edit().putString("download_proxy", selected).apply()
+                            } catch (ignored: Throwable) {
+                            }
+                            updateDownloadProxyLabel()
+                            Toast.makeText(applicationContext, "下载线路已切换", Toast.LENGTH_SHORT).show()
+                        }
+                        .setNegativeButton("取消", null)
+                        .show()
+                } catch (e: Throwable) {
+                    logUpdateIssue("proxy: show test result", e)
+                }
+            }
+        }.start()
+    }
+
     private fun fetchLatestReleaseJson(connectTimeoutMs: Int = 10000, readTimeoutMs: Int = 10000): JSONObject {
         val directUrl = "https://api.github.com/repos/cyj265/lanxing-tv/releases/latest"
-        val urls = listOf(directUrl, "https://gh-proxy.com/$directUrl")
+        val urls = updateUrls(directUrl).first
         var lastError: Exception? = null
         for (url in urls) {
             try {
@@ -2369,18 +2466,8 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     }
 
     private fun downloadAndInstall(originalUrl: String) {
-        // 双线下载：先直连，失败自动换加速中转
-        val proxyUrl = if (originalUrl.startsWith("https://github.com/")) {
-            "https://gh-proxy.com/" + originalUrl
-        } else {
-            originalUrl
-        }
-        val urls = if (originalUrl == proxyUrl) {
-            listOf(originalUrl)  // 非 GitHub 链接只有一条
-        } else {
-            listOf(originalUrl, proxyUrl)  // GitHub 链接：直连 + 加速
-        }
-        val urlNames = listOf("直连", "加速")
+        // 线路顺序由设置里的「下载线路」决定，默认直连优先 + gh-proxy 回退
+        val (urls, urlNames) = updateUrls(originalUrl)
 
         Thread {
             var lastError: String? = null
@@ -2987,6 +3074,10 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
      */
     private companion object {
         const val CHANNEL_SWITCH_DEBOUNCE_MS = 260L
+        /** 数字选台：停止输入后多久执行跳转。147 个频道最多 3 位，1.5 秒足够。 */
+        const val CHANNEL_NUMBER_CONFIRM_MS = 1500L
+        /** 线路测速用的小文件：GitHub Release JSON，几 KB，能真实反映下载链路。 */
+        const val PROXY_TEST_URL = "https://api.github.com/repos/cyj265/lanxing-tv/releases/latest"
 
         /**
          * 频道名归一化正则：全局只编译一次。
@@ -3002,6 +3093,20 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     }
     private val switchHandler = Handler(Looper.getMainLooper())
     private var pendingSwitchDelta = 0
+
+    // 数字选台：全屏态按数字键累积频道号，停手 1.5 秒或按 OK 执行跳转
+    private val channelNumberHandler = Handler(Looper.getMainLooper())
+    private val channelNumberInput = StringBuilder()
+    private val channelNumberConfirmRunnable = Runnable { confirmChannelNumber() }
+
+    // 下载线路候选：空前缀表示直连优先（默认仍保留 gh-proxy 作为失败回退）
+    private val downloadProxyOptions = arrayOf(
+        "" to "直连优先（默认）",
+        "https://gh-proxy.com/" to "gh-proxy.com",
+        "https://ghproxy.net/" to "ghproxy.net",
+        "https://gh-proxy.org/" to "gh-proxy.org",
+        "https://mirror.ghproxy.com/" to "mirror.ghproxy.com"
+    )
     private var lastSwitchAt = 0L
     private val pendingSwitchRunnable = Runnable {
         val delta = pendingSwitchDelta
@@ -3063,6 +3168,49 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     private fun performSwitchChannel(delta: Int) {
         val target = resolveTargetChannel(delta) ?: return
         lastSwitchAt = System.currentTimeMillis()
+        onChannelClick(target)
+    }
+
+    // ---------- 数字选台 ----------
+
+    /** 收藏模式下按收藏列表编号，否则按全局频道列表编号（从 1 开始）。 */
+    private fun channelNumberTargets(): List<Channel> =
+        if (showFavoritesOnly) allChannels.filter { favorites.contains(it.url) } else allChannels
+
+    private fun inputChannelNumber(digit: Int) {
+        val targets = channelNumberTargets()
+        if (targets.isEmpty()) return
+        // 最多 3 位；超出时从本次数字重新开始，避免无效长串
+        if (channelNumberInput.length >= 3) channelNumberInput.setLength(0)
+        channelNumberInput.append(digit)
+        val number = channelNumberInput.toString().toIntOrNull() ?: return
+        val target = targets.getOrNull(number - 1)
+        binding.tvChannelNumber.text = if (target != null) {
+            number.toString().padStart(2, '0') + "  " + target.name
+        } else {
+            number.toString().padStart(2, '0')
+        }
+        binding.tvChannelNumber.visibility = View.VISIBLE
+        channelNumberHandler.removeCallbacks(channelNumberConfirmRunnable)
+        channelNumberHandler.postDelayed(channelNumberConfirmRunnable, CHANNEL_NUMBER_CONFIRM_MS)
+    }
+
+    private fun clearChannelNumberInput() {
+        channelNumberHandler.removeCallbacks(channelNumberConfirmRunnable)
+        channelNumberInput.setLength(0)
+        binding.tvChannelNumber.visibility = View.GONE
+    }
+
+    private fun confirmChannelNumber() {
+        channelNumberHandler.removeCallbacks(channelNumberConfirmRunnable)
+        val number = channelNumberInput.toString().toIntOrNull()
+        clearChannelNumberInput()
+        if (number == null || number < 1) return
+        val target = channelNumberTargets().getOrNull(number - 1)
+        if (target == null) {
+            Toast.makeText(applicationContext, "没有 $number 号频道", Toast.LENGTH_SHORT).show()
+            return
+        }
         onChannelClick(target)
     }
 
@@ -3583,6 +3731,42 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     // ---------- 遥控器按键 ----------
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // 数字选台只接管全屏播放态；面板打开时不拦截，避免干扰搜索框与设置项
+        if (!isSettingsPanelVisible && !isChannelPanelVisible) {
+            when {
+                keyCode in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> {
+                    inputChannelNumber(keyCode - KeyEvent.KEYCODE_0)
+                    return true
+                }
+                keyCode == KeyEvent.KEYCODE_DEL -> {
+                    if (channelNumberInput.isNotEmpty()) {
+                        channelNumberInput.deleteCharAt(channelNumberInput.length - 1)
+                        if (channelNumberInput.isEmpty()) {
+                            clearChannelNumberInput()
+                        } else {
+                            binding.tvChannelNumber.text = channelNumberInput.toString().padStart(2, '0')
+                            channelNumberHandler.removeCallbacks(channelNumberConfirmRunnable)
+                            channelNumberHandler.postDelayed(
+                                channelNumberConfirmRunnable, CHANNEL_NUMBER_CONFIRM_MS
+                            )
+                        }
+                        return true
+                    }
+                }
+                keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER -> {
+                    if (channelNumberInput.isNotEmpty()) {
+                        confirmChannelNumber()
+                        return true
+                    }
+                }
+                keyCode == KeyEvent.KEYCODE_BACK -> {
+                    if (channelNumberInput.isNotEmpty()) {
+                        clearChannelNumberInput()
+                        return true
+                    }
+                }
+            }
+        }
         // 设置面板打开：返回键逐层退出（详情 → 导航列 → 关闭）；
         // 菜单/设置键与全屏态打开它的按键对应，直接关闭；OK 从导航列进入详情
         if (isSettingsPanelVisible) {
@@ -3874,6 +4058,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         clockHandler.removeCallbacksAndMessages(null)
         // 换台防抖任务必须撤销：Activity 销毁 260ms 后仍可能触发换台并访问已 release 的播放器。
         switchHandler.removeCallbacksAndMessages(null)
+        channelNumberHandler.removeCallbacksAndMessages(null)
         previewHandler.removeCallbacksAndMessages(null)
         surfaceResumeHandler.removeCallbacksAndMessages(null)
         sleepTimerHandler.removeCallbacksAndMessages(null)

@@ -1,9 +1,11 @@
 package com.cyj265.iptvplayer.data
 
+import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.Charset
+import java.util.zip.GZIPInputStream
 
 /**
  * 简单的网络加载器，负责下载 M3U / EPG。
@@ -23,6 +25,21 @@ object HttpLoader {
         return decodeText(bytes)
     }
 
+    /** 返回原始或已解压的字节。用 gzip 魔数识别，不依赖 URL 后缀或 Content-Encoding 头。 */
+    private fun decodeBody(bytes: ByteArray, url: String): ByteArray {
+        if (!isGzip(bytes)) return bytes
+        return try {
+            GZIPInputStream(ByteArrayInputStream(bytes)).use { it.readBytes() }
+        } catch (e: Exception) {
+            throw IOException("gzip 解压失败（$url）：${e.message ?: e.javaClass.simpleName}")
+        }
+    }
+
+    private fun isGzip(bytes: ByteArray): Boolean =
+        bytes.size >= 2 &&
+            (bytes[0].toInt() and 0xFF) == 0x1F &&
+            (bytes[1].toInt() and 0xFF) == 0x8B
+
     fun fetchBytes(url: String): ByteArray {
         var current = url
         var redirects = 0
@@ -39,7 +56,7 @@ object HttpLoader {
                     continue
                 }
                 if (code != 200) throw IOException("HTTP $code")
-                return conn.inputStream.use { it.readBytes() }
+                return decodeBody(conn.inputStream.use { it.readBytes() }, current)
             } finally {
                 conn.disconnect()
             }

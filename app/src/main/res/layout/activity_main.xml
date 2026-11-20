@@ -1380,6 +1380,26 @@
                             android:lineSpacingExtra="3dp"
                             android:text="" />
 
+                        <Button
+                            android:id="@+id/btnDownloadProxy"
+                            android:layout_width="match_parent"
+                            android:layout_height="44dp"
+                            android:layout_marginTop="10dp"
+                            android:text="下载线路：自动（点击切换/测速）"
+                            android:textSize="13sp"
+                            android:backgroundTint="@color/accent"
+                            android:textColor="#FFFFFF" />
+
+                        <TextView
+                            android:id="@+id/tvDownloadProxyStatus"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp"
+                            android:lineSpacingExtra="2dp"
+                            android:text="" />
+
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
@@ -1578,6 +1598,25 @@
             </ScrollView>
         </LinearLayout>
     </LinearLayout>
+    <!-- 数字选台输入提示：全屏态按数字键后出现，位于画面右上角 -->
+    <TextView
+        android:id="@+id/tvChannelNumber"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="48dp"
+        android:layout_marginEnd="56dp"
+        android:background="@drawable/bg_channel_number"
+        android:gravity="center"
+        android:minWidth="120dp"
+        android:padding="12dp"
+        android:textColor="#FFFFFF"
+        android:textSize="34sp"
+        android:textStyle="bold"
+        android:shadowColor="#CC000000"
+        android:shadowRadius="4"
+        android:visibility="gone" />
+
     <!-- 启动图片覆盖层（揽星TV 风格） -->
 
 </FrameLayout>
