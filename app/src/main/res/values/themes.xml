@@ -11,6 +11,7 @@
         <!-- 弹窗统一走主题：深蓝灰圆角卡片 + accent 焦点 + 开关动效，
              避免系统默认白底弹窗与全局深蓝灰界面割裂 -->
         <item name="alertDialogTheme">@style/Theme.IPTVPlayer.Dialog</item>
+        <item name="android:alertDialogTheme">@style/Theme.IPTVPlayer.Dialog</item>
         <!-- 注意：不要在此设置 android:fontFamily 字面值。
              这是 Android 7 (Nougat) 的已知崩溃 (Google issue 64053344)：
              主题里直接写 fontFamily 会在 inflate TextView 时抛
