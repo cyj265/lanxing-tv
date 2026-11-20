@@ -2302,23 +2302,46 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                     } else {
                         "最优：${best.second} ${best.third}ms"
                     }
-                    val labels = results.map { (_, name, ms) ->
-                        if (ms >= 0) "$name · ${ms}ms" else "$name · 不可用"
-                    }.toTypedArray()
-                    AlertDialog.Builder(this@MainActivity)
+                    // 不用系统 setItems：本项目的深色 AppCompat 主题下该项列表不渲染文字。
+                    // 用标准 Button 列表，颜色显式指定，也便于遥控器逐项聚焦。
+                    val listHost = LinearLayout(this@MainActivity).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(0, 8, 0, 0)
+                    }
+                    val chooser = AlertDialog.Builder(this@MainActivity)
                         .setTitle("选择下载线路")
-                        .setItems(labels) { _, which ->
-                            val selected = results[which].first
-                            try {
-                                getSharedPreferences("settings", MODE_PRIVATE)
-                                    .edit().putString("download_proxy", selected).apply()
-                            } catch (ignored: Throwable) {
-                            }
-                            updateDownloadProxyLabel()
-                            Toast.makeText(applicationContext, "下载线路已切换", Toast.LENGTH_SHORT).show()
-                        }
+                        .setView(listHost)
                         .setNegativeButton("取消", null)
-                        .show()
+                        .create()
+                    for ((prefix, name, ms) in results) {
+                        val button = Button(this@MainActivity).apply {
+                            text = if (ms >= 0) "$name · ${ms}ms" else "$name · 不可用"
+                            isAllCaps = false
+                            textSize = 14f
+                            setTextColor(Color.WHITE)
+                            setBackgroundColor(ContextCompat.getColor(context, R.color.accent))
+                            setOnClickListener {
+                                try {
+                                    getSharedPreferences("settings", MODE_PRIVATE)
+                                        .edit().putString("download_proxy", prefix).apply()
+                                } catch (ignored: Throwable) {
+                                }
+                                updateDownloadProxyLabel()
+                                Toast.makeText(
+                                    applicationContext, "下载线路已切换", Toast.LENGTH_SHORT
+                                ).show()
+                                chooser.dismiss()
+                            }
+                        }
+                        listHost.addView(
+                            button,
+                            LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            ).apply { bottomMargin = 8 }
+                        )
+                    }
+                    chooser.show()
                 } catch (e: Throwable) {
                     logUpdateIssue("proxy: show test result", e)
                 }
