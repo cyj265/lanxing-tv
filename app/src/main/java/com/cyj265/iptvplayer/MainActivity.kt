@@ -19,6 +19,7 @@ import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
+import android.view.Window
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.ImageView
@@ -370,7 +371,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         } catch (ignored: Exception) {
         }
         try {
-            AlertDialog.Builder(this)
+            themedDialogBuilder()
                 .setTitle("启动失败（已记录日志）")
                 .setMessage(
                     "请把此弹窗截图发给开发者，或在设置→调试中查看完整日志：\n\n" +
@@ -476,7 +477,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
 
     private fun confirmExit() {
         try {
-            AlertDialog.Builder(this)
+            themedDialogBuilder()
                 .setTitle(R.string.nav_exit)
                 .setMessage(R.string.exit_confirm)
                 .setPositiveButton(R.string.nav_exit) { _, _ -> exitApp() }
@@ -772,7 +773,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 }
                 // 长按删除（遥控器长按 OK 键）
                 info.setOnLongClickListener {
-                    android.app.AlertDialog.Builder(this@MainActivity)
+                    themedDialogBuilder()
                         .setTitle("删除直播源")
                         .setMessage("确定删除源 " + (i + 1) + "（" + sourceLabel(url) + "）吗？")
                         .setPositiveButton("删除") { _, _ -> deleteSource(i) }
@@ -927,7 +928,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             setPadding(40, 30, 40, 30)
             setBackgroundColor(0xFF1B2438.toInt())
         }
-        android.app.AlertDialog.Builder(this)
+        themedDialogBuilder()
             .setTitle("添加直播源")
             .setMessage("输入 M3U/TXT 播放列表 URL（每行一个，支持多个）")
             .setView(et)
@@ -967,7 +968,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             setPadding(40, 30, 40, 30)
             setBackgroundColor(0xFF1B2438.toInt())
         }
-        android.app.AlertDialog.Builder(this)
+        themedDialogBuilder()
             .setTitle("节目单地址（EPG）")
             .setMessage("输入 EPG XML/XML.GZ 地址（可选，每行一个，自动降级）")
             .setView(et)
@@ -1082,7 +1083,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         tv.gravity = android.view.Gravity.CENTER_HORIZONTAL
         tv.text = "请用手机（与机顶盒同一 Wi-Fi）扫描：\n$url\n\n可添加/切换直播源、设置节目指南、直接播放"
         content.addView(tv, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        AlertDialog.Builder(this)
+        themedDialogBuilder()
             .setTitle(R.string.scan_qr_title)
             .setView(content)
             .setPositiveButton(R.string.close, null)
@@ -1822,7 +1823,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
         // 先保证写进应用目录再提示：电视盒子经常没有可用的系统文件选择器，
         // 之前直接拉起保存窗口，在盒子上表现为「点了没反应」，恢复时自然也找不到文件。
         val saved = saveBackupToAppDir(name) ?: return
-        AlertDialog.Builder(this)
+        themedDialogBuilder()
             .setTitle("备份完成")
             .setMessage(
                 "已保存到：\n${saved.absolutePath}\n\n" +
@@ -1882,7 +1883,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     }
 
     private fun confirmRestore() {
-        AlertDialog.Builder(this)
+        themedDialogBuilder()
             .setTitle(R.string.restore_config)
             .setMessage(R.string.restore_confirm)
             .setPositiveButton("选择备份") { _, _ -> showRestoreFilePicker() }
@@ -1943,7 +1944,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
             isFillViewport = false
             addView(listLayout)
         }
-        val dialog = AlertDialog.Builder(this)
+        val dialog = themedDialogBuilder()
             .setTitle("选择要恢复的备份")
             .setView(scroll)
             .setNeutralButton("从其他位置选择") { _, _ ->
@@ -2358,7 +2359,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                         isFillViewport = false
                         addView(listLayout)
                     }
-                    chooser = AlertDialog.Builder(this@MainActivity)
+                    chooser = themedDialogBuilder()
                         .setTitle("选择下载线路")
                         .setView(scroll)
                         .setNegativeButton("取消", null)
@@ -2433,7 +2434,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                 if (newer && !apkUrl.isNullOrEmpty()) {
                     runOnUiThread {
                         try {
-                            AlertDialog.Builder(this)
+                            themedDialogBuilder()
                                 .setTitle("发现新版本")
                                 .setMessage(buildUpdateMessage(tag, latestBuild, formatReleaseNotes(json.optString("body"))))
                                 .setPositiveButton("立即更新") { _, _ ->
@@ -2482,7 +2483,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                         } else {
                             binding.tvUpdateStatus.text =
                                 getString(R.string.update_found) + " v" + tag + " #$latestBuild"
-                            AlertDialog.Builder(this@MainActivity)
+                            themedDialogBuilder()
                                 .setTitle("发现新版本")
                                 .setMessage(buildUpdateMessage(tag, latestBuild, formatReleaseNotes(json.optString("body"))))
                                 .setPositiveButton("立即更新") { _, _ ->
@@ -2637,7 +2638,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
 
     private fun showInstallPermissionDialog() {
         try {
-            AlertDialog.Builder(this)
+            themedDialogBuilder()
                 .setTitle("需要授权安装更新")
                 .setMessage(
                     "Android 要求先允许本应用安装更新包。\n\n" +
@@ -3125,6 +3126,23 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
      * 若每次都立即起播，播放器会在几十毫秒内反复重建，N1 上极易触发解码器初始化失败/黑屏。
      * 这里把连发合并：期间只更新标题提示，停手 ~260ms 后只播放最终停留的频道。
      */
+    /**
+     * 统一弹窗外观：平台 AlertDialog 在 AppCompat 主题下不总是读取 alertDialogTheme，
+     * 这里在 show() 时直接给窗口设置深蓝灰圆角背景与主题文字色，保证所有弹窗一致。
+     */
+    private fun themedDialogBuilder(): AlertDialog.Builder =
+        object : AlertDialog.Builder(this@MainActivity) {
+            override fun show(): AlertDialog {
+                val dialog = super.show()
+                try {
+                    dialog.window?.setBackgroundDrawableResource(R.drawable.bg_dialog_panel)
+                    dialog.window?.setDimAmount(0.72f)
+                } catch (ignored: Throwable) {
+                }
+                return dialog
+            }
+        }
+
     private companion object {
         const val CHANNEL_SWITCH_DEBOUNCE_MS = 260L
         /** 数字选台：停止输入后多久执行跳转。147 个频道最多 3 位，1.5 秒足够。 */
@@ -4093,7 +4111,7 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
     /** 退出确认弹窗 */
     private fun showExitDialog() {
         try {
-            AlertDialog.Builder(this)
+            themedDialogBuilder()
                 .setTitle("退出揽星TV")
                 .setMessage("确定要退出应用吗？")
                 .setPositiveButton("退出") { _, _ ->
