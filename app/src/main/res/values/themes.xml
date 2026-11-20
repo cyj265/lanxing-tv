@@ -8,10 +8,38 @@
         <item name="android:statusBarColor">@color/bg_dark</item>
         <item name="android:navigationBarColor">@color/bg_dark</item>
         <item name="android:windowFullscreen">true</item>
+        <!-- 弹窗统一走主题：深蓝灰圆角卡片 + accent 焦点 + 开关动效，
+             避免系统默认白底弹窗与全局深蓝灰界面割裂 -->
+        <item name="alertDialogTheme">@style/Theme.IPTVPlayer.Dialog</item>
         <!-- 注意：不要在此设置 android:fontFamily 字面值。
              这是 Android 7 (Nougat) 的已知崩溃 (Google issue 64053344)：
              主题里直接写 fontFamily 会在 inflate TextView 时抛
              ArrayIndexOutOfBoundsException: StringBlock.get() 越界，导致启动即崩。
              sans-serif 本就是系统默认字体，无需显式设置。 -->
+    </style>
+
+    <!-- 所有 AlertDialog 的统一外观：沿用全局配色与圆角，去掉系统白底 -->
+    <style name="Theme.IPTVPlayer.Dialog" parent="Theme.AppCompat.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/bg_dialog_panel</item>
+        <item name="android:windowMinWidthMajor">52%</item>
+        <item name="android:windowMinWidthMinor">72%</item>
+        <item name="android:windowAnimationStyle">@style/Theme.IPTVPlayer.Dialog.Animation</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="buttonBarPositiveButtonStyle">@style/DialogButton</item>
+        <item name="buttonBarNegativeButtonStyle">@style/DialogButton</item>
+        <item name="buttonBarNeutralButtonStyle">@style/DialogButton</item>
+    </style>
+
+    <style name="DialogButton" parent="Widget.AppCompat.Button.ButtonBar.AlertDialog">
+        <item name="android:textColor">@color/accent</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:minHeight">44dp</item>
+    </style>
+
+    <style name="Theme.IPTVPlayer.Dialog.Animation">
+        <item name="android:windowEnterAnimation">@anim/dialog_enter</item>
+        <item name="android:windowExitAnimation">@anim/dialog_exit</item>
     </style>
 </resources>

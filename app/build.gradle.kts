@@ -15,7 +15,7 @@ android {
         // 同一版本号下每次构建各有独立 versionCode，系统安装器不会因「版本未变」
         // 拒绝覆盖；BUILD_NUMBER 取同一个值，两处不会出现两套版本号。
         versionCode = System.getenv("RUN_NUMBER")?.toIntOrNull() ?: 74
-        versionName = "1.16.6"
+        versionName = "1.16.7"
 
         // 构建号：GitHub Actions 传入 RUN_NUMBER，本地构建默认 0
         buildConfigField("int", "BUILD_NUMBER", (System.getenv("RUN_NUMBER") ?: "0").toString())

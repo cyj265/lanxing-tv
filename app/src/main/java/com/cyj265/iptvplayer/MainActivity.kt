@@ -2302,24 +2302,33 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                     } else {
                         "最优：${best.second} ${best.third}ms"
                     }
-                    // 不用系统 setItems：本项目的深色 AppCompat 主题下该项列表不渲染文字。
-                    // 用标准 Button 列表，颜色显式指定，也便于遥控器逐项聚焦。
-                    val listHost = LinearLayout(this@MainActivity).apply {
+                    // 与备份列表弹窗同一套规范：透明默认行 + accent 焦点行 + 主题文字色。
+                    // 系统 setItems 在本项目深色 AppCompat 主题下不渲染文字，故自己排版。
+                    val density = resources.displayMetrics.density
+                    val padH = (16 * density).toInt()
+                    val rowHeight = (52 * density).toInt()
+                    val current = currentDownloadProxy()
+                    // 行点击回调里要 dismiss，先声明后赋值（Kotlin 局部引用规则）
+                    lateinit var chooser: android.app.AlertDialog
+                    val listLayout = LinearLayout(this@MainActivity).apply {
                         orientation = LinearLayout.VERTICAL
-                        setPadding(0, 8, 0, 0)
+                        setPadding(0, (6 * density).toInt(), 0, (6 * density).toInt())
                     }
-                    val chooser = AlertDialog.Builder(this@MainActivity)
-                        .setTitle("选择下载线路")
-                        .setView(listHost)
-                        .setNegativeButton("取消", null)
-                        .create()
-                    for ((prefix, name, ms) in results) {
-                        val button = Button(this@MainActivity).apply {
-                            text = if (ms >= 0) "$name · ${ms}ms" else "$name · 不可用"
-                            isAllCaps = false
-                            textSize = 14f
-                            setTextColor(Color.WHITE)
-                            setBackgroundColor(ContextCompat.getColor(context, R.color.accent))
+                    val rows = results.mapIndexed { idx, (prefix, name, ms) ->
+                        TextView(this@MainActivity).apply {
+                            id = View.generateViewId()
+                            layoutParams = LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT, rowHeight
+                            )
+                            gravity = Gravity.CENTER_VERTICAL
+                            setPadding(padH, 0, padH, 0)
+                            text = (if (prefix == current) "● " else "   ") +
+                                (if (ms >= 0) "$name · ${ms}ms" else "$name · 不可用")
+                            textSize = 15f
+                            isFocusable = true
+                            isClickable = true
+                            setBackgroundResource(R.drawable.bg_dialog_item)
+                            setTextColor(ContextCompat.getColorStateList(this@MainActivity, R.color.dialog_item_text))
                             setOnClickListener {
                                 try {
                                     getSharedPreferences("settings", MODE_PRIVATE)
@@ -2332,14 +2341,35 @@ class MainActivity : AppCompatActivity(), PlaybackManager.Listener {
                                 ).show()
                                 chooser.dismiss()
                             }
-                        }
-                        listHost.addView(
-                            button,
-                            LinearLayout.LayoutParams(
-                                LinearLayout.LayoutParams.MATCH_PARENT,
-                                LinearLayout.LayoutParams.WRAP_CONTENT
-                            ).apply { bottomMargin = 8 }
+                        }.also { listLayout.addView(it) }
+                    }
+                    // 显式串成焦点链：上下键只在选项之间移动，不会跳去按钮栏
+                    rows.forEachIndexed { i, row ->
+                        row.nextFocusUpId = rows.getOrNull(i - 1)?.id ?: row.id
+                        row.nextFocusDownId = rows.getOrNull(i + 1)?.id ?: row.id
+                    }
+                    // 最多 5 行，超出滚动；用 dp 与百分比保证小屏与 4K 盒子都不溢出
+                    val visibleRows = results.size.coerceAtMost(5)
+                    val scroll = ScrollView(this@MainActivity).apply {
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ((visibleRows * 52 + 12) * density).toInt()
                         )
+                        isFillViewport = false
+                        addView(listLayout)
+                    }
+                    chooser = AlertDialog.Builder(this@MainActivity)
+                        .setTitle("选择下载线路")
+                        .setView(scroll)
+                        .setNegativeButton("取消", null)
+                        .create()
+                    // 遥控器打开即可选：窗口布局完成后把焦点落到当前线路行，
+                    // 避免焦点停在「取消」上导致上下键到不了选项（v297 的问题）。
+                    val currentIndex = results.indexOfFirst { it.first == current }
+                    chooser.setOnShowListener {
+                        chooser.window?.decorView?.post {
+                            rows.getOrNull(currentIndex.coerceAtLeast(0))?.requestFocus()
+                        }
                     }
                     chooser.show()
                 } catch (e: Throwable) {
