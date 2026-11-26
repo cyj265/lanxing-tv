@@ -89,6 +89,25 @@ class PlaybackManager(
     private val retryHandler = Handler(Looper.getMainLooper())
     private val sourceTimeoutHandler = Handler(Looper.getMainLooper())
     private var sourceTimeoutMs: Long = 10_000L
+    // ---------- 播放活性看门狗 ----------
+    // 场景：HLS 源中途静默断流（连接未断、无 PlaybackException），ExoPlayer 保持
+    // STATE_READY 但 currentPosition 不再推进，画面定格在最后一帧且无错误提示。
+    // 现有 onPlayerError 捕获不到，只能靠看门狗检测"位置停滞"并主动重连。
+    private val stallHandler = Handler(Looper.getMainLooper())
+    private var lastStallPosition = -1L
+    private var stallTickCount = 0
+    /** 检测间隔 5s，连续 3 次（15s）无进展判定卡死 */
+    private val stallIntervalMs = 5_000L
+    private val stallMaxTicks = 3
+    /** 卡死重连次数（每次切台重置），避免反复重连形成死循环 */
+    private var stallRecoveryCount = 0
+    private val stallMaxRecovery = 2
+    private val stallRunnable = object : Runnable {
+        override fun run() {
+            checkPlaybackStall()
+            stallHandler.postDelayed(this, stallIntervalMs)
+        }
+    }
     // ---------- 换台预加载：焦点频道预热 DNS+TCP 连接，OK 键播放时省握手时间 ----------
     private val preloadHandler = android.os.Handler(android.os.Looper.getMainLooper())
     @Volatile private var preloadUrl: String? = null
@@ -150,9 +169,10 @@ class PlaybackManager(
     private val playerListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (playbackState == Player.STATE_READY) {
-                // 起播成功：取消超时换源
+                // 起播成功：取消超时换源，启动播放活性检测
                 hasStartedPlaying = true
                 sourceTimeoutHandler.removeCallbacksAndMessages(null)
+                startStallWatcher()
             }
             listener.onPlaybackStateChanged(player?.isPlaying == true)
         }
@@ -307,6 +327,7 @@ class PlaybackManager(
      */
     private fun degradeToSoftware(url: String, channelName: String) {
         val pv = playerView ?: return
+        stopStallWatcher()  // 重建播放器期间停掉检测
         player?.removeListener(playerListener)
         player?.release()
         pv.player = null
@@ -461,6 +482,7 @@ class PlaybackManager(
         decoderInitRetryCount = 0
         renderRetryCount = 0
         degradedToSoftware = false
+        stallRecoveryCount = 0  // 换台重置卡死恢复计数，避免上一台的重试次数累积到新台
         // 修复：换台时必须更新 currentChannelName，
         // 否则 playCurrentSource() 里 `?: url` 只在首次生效且赋的是 URL，
         // 导致崩溃日志 [Playback] channel= 永远是首个频道的地址，无法定位问题。
@@ -473,6 +495,7 @@ class PlaybackManager(
         hasStartedPlaying = false
         currentUrl = url
         currentChannelName = currentChannelName ?: url
+        stopStallWatcher()  // 停掉上一条线路的活性检测，新 STATE_READY 会重新启动
         // 换台优化：setMediaSource 自动替换当前 source，无需手动 stop/clear，减少播放器重置开销
         p.setMediaSource(buildMediaSource(url, currentChannelName ?: url))
         p.prepare()
@@ -527,6 +550,104 @@ class PlaybackManager(
             // 单线路超时：不做任何动作，让播放器自行缓冲/报错
         }, sourceTimeoutMs)
     }
+
+    /** 启动活性检测（幂等）。只在真正开始播放后由 playerListener 调用。 */
+    private fun startStallWatcher() {
+        stallHandler.removeCallbacks(stallRunnable)
+        lastStallPosition = -1L
+        stallTickCount = 0
+        stallHandler.postDelayed(stallRunnable, stallIntervalMs)
+    }
+
+    /** 停止活性检测并清零状态（切台 / 后台 / release 时调用）。 */
+    private fun stopStallWatcher() {
+        stallHandler.removeCallbacks(stallRunnable)
+        lastStallPosition = -1L
+        stallTickCount = 0
+    }
+
+    /**
+     * 每次检测采样播放器位置：
+     * - 仅在 STATE_READY + isPlaying 时判定（排除起播缓冲、后台暂停、 ended）；
+     * - isLoading=true 说明正在拉数据，属于正常缓冲，重置计数不误判；
+     * - 位置推进（> 上次）说明正常播放，重置计数；
+     * - 连续 stallMaxTicks 次位置不变且非 loading → 判定静默卡死，触发恢复。
+     */
+    private fun checkPlaybackStall() {
+        val p = player
+        if (p == null || !hasStartedPlaying || !p.playWhenReady) {
+            // 播放器未就绪 / 后台暂停 / 未起播：暂停期间不计入卡死
+            stallTickCount = 0
+            lastStallPosition = -1L
+            return
+        }
+        if (p.playbackState != Player.STATE_READY) {
+            // STATE_BUFFERING / ENDED / IDLE 交给现有机制处理，不在此误判
+            stallTickCount = 0
+            lastStallPosition = -1L
+            return
+        }
+        val pos = p.currentPosition
+        if (p.isLoading || pos > lastStallPosition) {
+            // 正常推进或正在缓冲：重置
+            lastStallPosition = pos
+            stallTickCount = 0
+            return
+        }
+        stallTickCount++
+        if (stallTickCount < stallMaxTicks) return
+
+        // ==== 判定卡死 ====
+        stallTickCount = 0
+        lastStallPosition = -1L
+        writeStallLog(pos)
+        if (stallRecoveryCount < stallMaxRecovery) {
+            stallRecoveryCount++
+            listener.onPlaybackError("检测到播放停滞，正在自动恢复（${stallRecoveryCount}/${stallMaxRecovery}）…")
+            val url = currentUrl
+            val name = currentChannelName ?: url
+            if (url != null) retryPlay(url, name ?: url) else autoFail("播放停滞")
+        } else {
+            // 已达重试上限：交给多线路切换，全部失败会给出明确提示
+            stallRecoveryCount = 0
+            autoFail("播放停滞（已自动恢复 ${stallMaxRecovery} 次仍无画面）")
+        }
+    }
+
+    /** 卡死时写一份现场快照到 app.log（非 PlaybackException，writeCrashLog 不适用） */
+    private fun writeStallLog(pos: Long) {
+        try {
+            val p = player ?: return
+            val sb = StringBuilder()
+            sb.append("\n========== 播放停滞检测 ")
+            sb.append(java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date()))
+            sb.append(" ==========\n")
+            sb.append("[Playback] channel=").append(currentChannelName ?: "null")
+                .append(" src=").append(currentSourceIndex).append("/").append(currentSources.size)
+                .append(" decoder=").append(decoderMode)
+                .append(" degraded=").append(degradedToSoftware)
+                .append(" recovery=").append(stallRecoveryCount).append("/").append(stallMaxRecovery)
+                .append("\n")
+            sb.append("[Player] state=").append(p.playbackState)
+                .append(" playing=").append(p.isPlaying)
+                .append(" loading=").append(p.isLoading)
+                .append(" pos=").append(pos)
+                .append(" buffered=").append(p.bufferedPosition)
+                .append("\n")
+            val vf = p.videoFormat
+            if (vf != null) {
+                sb.append("[Video] mime=").append(vf.sampleMimeType)
+                    .append(" ").append(vf.width).append("x").append(vf.height)
+                    .append(" fps=").append(vf.frameRate).append("\n")
+            }
+            sb.append("[Action] ").append(if (stallRecoveryCount < stallMaxRecovery) "retry current source" else "switch line")
+                .append("\n========== 结束 ==========\n")
+            val logFile = File(context.filesDir, "app.log")
+            if (logFile.exists() && logFile.length() > 500 * 1024) logFile.delete()
+            logFile.appendText(sb.toString())
+        } catch (ignored: Exception) {
+        }
+    }
     /** 当前线路序号（0 起） */
     fun currentSourceIndex(): Int = currentSourceIndex
     /** 当前频道线路总数 */
@@ -550,6 +671,8 @@ class PlaybackManager(
         try {
             if (!p.isPlaying && p.playbackState == androidx.media3.common.Player.STATE_READY) {
                 p.play()
+                // pause 期间检测已停止，回前台恢复后重启活性检测（不会触发 STATE_READY 回调）
+                if (hasStartedPlaying) startStallWatcher()
             }
         } catch (e: Exception) {
         }
@@ -573,6 +696,7 @@ class PlaybackManager(
     private fun retryPlay(url: String, channelName: String) {
         val p = player ?: return
         hasStartedPlaying = false
+        stopStallWatcher()  // 重连期间暂停检测，重建后 STATE_READY 会重新启动
         p.stop()
         p.clearMediaItems()
         p.setMediaSource(buildMediaSource(url, channelName))
@@ -625,6 +749,8 @@ class PlaybackManager(
             if (p.playWhenReady) p.pause()
         } catch (e: Exception) {
         }
+        // 后台暂停期间位置本就不推进，停掉检测避免误判为卡死
+        stopStallWatcher()
     }
     /**
      * 丰富的崩溃日志记录：包含设备信息、播放状态、视频格式、网络、内存等，
@@ -716,6 +842,7 @@ class PlaybackManager(
     fun release() {
         retryHandler.removeCallbacksAndMessages(null)
         sourceTimeoutHandler.removeCallbacksAndMessages(null)
+        stopStallWatcher()
         preloadHandler.removeCallbacksAndMessages(null)
         preloadThread?.interrupt()
         preloadThread = null
